@@ -35,6 +35,7 @@ public sealed class MpvMediaPlayer : IMediaPlayer
     private readonly MpvConnection _connection;
     private PlaybackItem? _item;
     private bool _closed;
+    private int _generation;
     private bool _needsLoad;
     private bool _updatingTracks;
     private bool _isMuted;
@@ -118,6 +119,7 @@ public sealed class MpvMediaPlayer : IMediaPlayer
             PlaybackItem? previous = _item;
             if (previous is not null) RegisterTracks(previous, false);
             _item = value;
+            _generation++;
             _needsLoad = value is not null;
             if (value is not null) RegisterTracks(value, true);
             else { Send("stop"); ChangeState(MediaPlaybackState.None); }
@@ -185,7 +187,7 @@ public sealed class MpvMediaPlayer : IMediaPlayer
         if (_closed) return;
         if (_item is not null) RegisterTracks(_item, false);
         _connection.EventReceived -= OnEvent;
-        Send("stop");
+        _ = _connection.CommandAsync("stop");
         _closed = true;
     }
 
@@ -196,7 +198,13 @@ public sealed class MpvMediaPlayer : IMediaPlayer
     private async Task SendAsync(string[] command)
     {
         if (_closed) return;
-        try { await _connection.CommandAsync(command); }
+        int generation = _generation;
+        bool mediaSpecific = command[0] is "loadfile" or "seek" or "sub-add" or "frame-step" or "frame-back-step" ||
+            command.Length >= 3 && command[0] == "set_property" && command[1] is "aid" or "vid" or "sid";
+        try
+        {
+            await _connection.CommandAsync(() => !_closed && (!mediaSpecific || generation == _generation), command);
+        }
         catch (Exception)
         {
             if (!_closed && _item is not null && command[0] == "loadfile")

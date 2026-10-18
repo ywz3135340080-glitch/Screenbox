@@ -29,10 +29,16 @@ internal sealed class Program : IDisposable
     private NamedPipeClientStream? _pipe;
     private StreamWriter? _writer;
 
-    private static async Task Main()
+    private static async Task<int> Main(string[] args)
     {
+        if (args.Length == 1 && args[0] == "--self-test")
+        {
+            try { await NativeVideoWindow.RunSelfTestAsync(); return 0; }
+            catch (Exception exception) { Console.Error.WriteLine(exception); return 1; }
+        }
         using var program = new Program();
         await program.RunAsync();
+        return 0;
     }
 
     private async Task RunAsync()

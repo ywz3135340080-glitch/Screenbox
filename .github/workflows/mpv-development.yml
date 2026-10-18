@@ -29,6 +29,16 @@ jobs:
           if (-not $buildTool) { throw "Visual Studio 2026 MSBuild was not found." }
           "SCREENBOX_MSBUILD=$buildTool" >> $env:GITHUB_ENV
 
+      - name: Publish mpv renderer worker
+        run: |
+          & $env:SCREENBOX_MSBUILD Screenbox.MpvBridge/Screenbox.MpvBridge.csproj -restore -t:Publish -m -v:minimal -p:Configuration=Release -p:Platform=x64 "-p:PublishDir=$env:GITHUB_WORKSPACE/artifacts/MpvBridge/"
+          if ($LASTEXITCODE -ne 0) { throw "Native renderer worker build failed." }
+
+      - name: Verify native child window, bounds, popup cutouts and cleanup
+        run: |
+          $process = Start-Process -FilePath "artifacts/MpvBridge/Screenbox.MpvBridge.exe" -ArgumentList "--self-test" -WindowStyle Hidden -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "The native video surface self-test failed." }
+
       - name: Configure unsigned development package
         run: |
           ./scripts/Update-AppxManifest.ps1 -Identity SideloadUnsigned
@@ -72,24 +82,4 @@ jobs:
           name: screenbox-build-diagnostics
           path: screenbox-build.binlog
           if-no-files-found: ignore
-          retention-days: 7
-
-  bridge:
-    runs-on: windows-2025-vs2026
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      - name: Publish native mpv worker
-        shell: pwsh
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $buildTool = & $vswhere -version "[18.0,19.0)" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
-          if (-not $buildTool) { throw "Visual Studio 2026 MSBuild was not found." }
-          & $buildTool Screenbox.MpvBridge/Screenbox.MpvBridge.csproj -restore -t:Publish -m -v:minimal -p:Configuration=Release -p:Platform=x64 "-p:PublishDir=$env:RUNNER_TEMP/ScreenboxMpvBridge/"
-          if ($LASTEXITCODE -ne 0) { throw "mpv worker build failed." }
-      - uses: actions/upload-artifact@v7
-        with:
-          name: screenbox-mpv-worker
-          path: ${{ runner.temp }}/ScreenboxMpvBridge/
-          if-no-files-found: error
           retention-days: 7

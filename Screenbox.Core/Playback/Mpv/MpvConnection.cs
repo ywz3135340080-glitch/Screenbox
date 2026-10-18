@@ -22,6 +22,7 @@ public sealed class MpvConnection
     private readonly TaskCompletionSource<AppServiceConnection> _connected = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _attached = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SemaphoreSlim _sendGate = new(1);
+    private readonly SemaphoreSlim _commandGate = new(1);
     private DispatcherQueue? _dispatcher;
     private BackgroundTaskDeferral? _deferral;
 
@@ -78,21 +79,24 @@ public sealed class MpvConnection
     }
 
     /// <summary>Queues a structured mpv command, preserving Unicode paths and argument boundaries.</summary>
-    public async Task CommandAsync(params string[] arguments)
+    public Task CommandAsync(params string[] arguments) => CommandAsync(null, arguments);
+
+    internal async Task CommandAsync(Func<bool>? shouldExecute, params string[] arguments)
     {
-        await _attached.Task;
-        var command = new JsonArray();
-        foreach (string argument in arguments) command.Add(argument);
-        if (arguments.Length >= 3 && arguments[0] == "set_property")
+        await _commandGate.WaitAsync();
+        try
         {
-            if (arguments[1] is "pause" or "mute") command[2] = arguments[2] == "yes";
-            else if (arguments[1] is "volume" or "speed" or "audio-delay" or "sub-delay" or "video-aspect-override")
-                command[2] = double.Parse(arguments[2], System.Globalization.CultureInfo.InvariantCulture);
+            await _attached.Task;
+            if (shouldExecute is not null && !shouldExecute()) return;
+            await SendRawAsync(await _connected.Task, new JsonObject
+            {
+                ["kind"] = "command", ["payload"] = MpvCommandBuilder.Create(arguments)
+            });
         }
-        await SendRawAsync(await _connected.Task, new JsonObject
+        finally
         {
-            ["kind"] = "command", ["payload"] = new JsonObject { ["command"] = command }
-        });
+            _commandGate.Release();
+        }
     }
 
     private async Task SendRawAsync(AppServiceConnection connection, JsonObject request)

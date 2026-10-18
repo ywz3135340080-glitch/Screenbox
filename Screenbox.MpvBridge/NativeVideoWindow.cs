@@ -11,7 +11,8 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
     private readonly ConcurrentQueue<Action> _pending = new();
     private readonly TaskCompletionSource<nint> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Thread _thread;
-    private readonly nint _parent;
+    private nint _parent;
+    private readonly bool _ownsParent;
     private uint _threadId;
     private nint _handle;
 
@@ -24,12 +25,24 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
         _thread.Start();
     }
 
+    private NativeVideoWindow()
+    {
+        _ownsParent = true;
+        _thread = new Thread(Run) { IsBackground = true, Name = "Screenbox native surface test" };
+        _thread.SetApartmentState(ApartmentState.STA);
+        _thread.Start();
+    }
+
     internal Task<nint> Handle => _ready.Task;
 
     internal bool ParentExists => IsWindow(_parent) != 0;
 
-    internal void SetBounds(int x, int y, int width, int height, bool visible, JsonArray? holes = null)
+    internal void SetBounds(int x, int y, int width, int height, bool visible, JsonArray? holes = null) =>
+        _ = SetBoundsAsync(x, y, width, height, visible, holes);
+
+    private Task SetBoundsAsync(int x, int y, int width, int height, bool visible, JsonArray? holes = null)
     {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         _pending.Enqueue(() =>
         {
             SetWindowPos(_handle, 0, x, y, Math.Max(1, width), Math.Max(1, height), 0x0014);
@@ -49,8 +62,10 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
             }
             if (SetWindowRgn(_handle, region, 1) == 0) DeleteObject(region);
             ShowWindow(_handle, visible && width > 0 && height > 0 ? 4 : 0);
+            completion.TrySetResult();
         });
         PostThreadMessageW(_threadId, 0x8001, 0, 0);
+        return completion.Task;
     }
 
     private void Run()
@@ -58,6 +73,7 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
         try
         {
             _threadId = GetCurrentThreadId();
+            if (_ownsParent) _parent = CreateWindowExW(0, "STATIC", "mpv surface self-test", 0, 0, 0, 640, 480, 0, 0, 0, 0);
             _handle = CreateWindowExW(0x08000000, "STATIC", "Screenbox mpv video", 0x46000000,
                 0, 0, 1, 1, _parent, 0, 0, 0);
             if (_handle == 0) throw new InvalidOperationException("Cannot create the embedded video window.");
@@ -82,6 +98,7 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
         finally
         {
             if (_handle != 0) DestroyWindow(_handle);
+            if (_ownsParent && _parent != 0) DestroyWindow(_parent);
         }
     }
 
@@ -137,6 +154,37 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
         if (_threadId != 0) PostThreadMessageW(_threadId, 0x0012, 0, 0);
         if (_thread.IsAlive) _thread.Join(TimeSpan.FromSeconds(2));
     }
+
+    internal static async Task RunSelfTestAsync()
+    {
+        using var window = new NativeVideoWindow();
+        nint handle = await window.Handle.WaitAsync(TimeSpan.FromSeconds(10));
+        var holes = new JsonArray(new JsonObject { ["x"] = 10, ["y"] = 10, ["width"] = 40, ["height"] = 40 });
+        await window.SetBoundsAsync(5, 7, 320, 180, false, holes).WaitAsync(TimeSpan.FromSeconds(10));
+        if (GetClientRect(handle, out NativeRectangle rectangle) == 0 || rectangle.Right != 320 || rectangle.Bottom != 180)
+            throw new InvalidOperationException("Native video bounds were not applied.");
+        if (IsChild(window._parent, handle) == 0) throw new InvalidOperationException("Video is not embedded as a child.");
+        nint region = CreateRectRgn(0, 0, 0, 0);
+        try
+        {
+            if (GetWindowRgn(handle, region) == 0 || PtInRegion(region, 20, 20) != 0 || PtInRegion(region, 100, 100) == 0)
+                throw new InvalidOperationException("XAML popup clipping was not preserved.");
+        }
+        finally { DeleteObject(region); }
+        window.Dispose();
+        if (IsWindow(handle) != 0) throw new InvalidOperationException("The embedded window was not released.");
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRectangle
+    {
+        internal int Left, Top, Right, Bottom;
+    }
+
+    [LibraryImport("user32.dll")] private static partial int GetClientRect(nint window, out NativeRectangle rectangle);
+    [LibraryImport("user32.dll")] private static partial int IsChild(nint parent, nint child);
+    [LibraryImport("user32.dll")] private static partial int GetWindowRgn(nint window, nint region);
+    [LibraryImport("gdi32.dll")] private static partial int PtInRegion(nint region, int x, int y);
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Message
