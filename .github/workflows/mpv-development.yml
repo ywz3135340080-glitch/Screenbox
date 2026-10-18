@@ -67,6 +67,9 @@ jobs:
       - name: Create preview installation kit
         run: ./scripts/Export-MpvPreviewKit.ps1
 
+      - name: Verify runtime reuse and missing-dependency selection
+        run: ./scripts/mpv-preview/Test-SetupEngine.ps1 -Payload artifacts/ScreenboxMpvPreview-x64.zip
+
       - name: Build graphical installer
         run: ./scripts/mpv-preview/Build-Setup.ps1 -SourceCommit $env:GITHUB_SHA
 
