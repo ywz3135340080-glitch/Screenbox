@@ -1,4 +1,4 @@
-name: Screenbox x64 development build
+name: Screenbox mpv x64 preview
 
 on:
   push:
@@ -44,6 +44,7 @@ jobs:
           ./scripts/Update-AppxManifest.ps1 -Identity SideloadUnsigned
           [xml]$manifest = Get-Content Screenbox/Package.appxmanifest -Raw
           $manifest.Package.Identity.Name = "Screenbox.MpvPreview"
+          $manifest.Package.Identity.Version = "0.1.0.$env:GITHUB_RUN_NUMBER"
           $manifest.Package.Properties.DisplayName = "Screenbox mpv Preview"
           $manifest.Package.Applications.Application.VisualElements.DisplayName = "Screenbox mpv Preview"
           $manifest.Save((Join-Path $PWD "Screenbox/Package.appxmanifest"))
@@ -63,17 +64,16 @@ jobs:
           & "$env:RUNNER_TEMP\ScreenboxTests\Screenbox.Core.Tests.exe"
           if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE." }
 
-      - name: Upload unsigned baseline package
+      - name: Create preview installation kit
+        run: ./scripts/Export-MpvPreviewKit.ps1
+
+      - name: Upload preview installation kit
         uses: actions/upload-artifact@v7
         with:
           name: screenbox-mpv-x64-preview
-          path: |
-            Screenbox/AppPackages/**/*.msix
-            Screenbox/AppPackages/**/*.msixbundle
-            Screenbox/AppPackages/**/*.appx
-            Screenbox/AppPackages/**/*.appxbundle
+          path: artifacts/ScreenboxMpvPreview-x64.zip
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 30
 
       - name: Upload build diagnostics
         if: always()

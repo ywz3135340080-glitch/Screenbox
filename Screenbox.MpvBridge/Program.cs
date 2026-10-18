@@ -24,6 +24,7 @@ internal sealed class Program : IDisposable
     private JsonObject _state = new();
     private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonObject>> _requests = new();
     private long _nextRequest;
+    private int _rendererGeneration;
     private NativeVideoWindow? _window;
     private Process? _process;
     private NamedPipeClientStream? _pipe;
@@ -97,7 +98,6 @@ internal sealed class Program : IDisposable
         catch (Exception exception)
         {
             await args.Request.SendResponseAsync(new ValueSet { ["ok"] = false, ["error"] = exception.Message });
-            await SendEventAsync("error", JsonValue.Create(exception.Message)!);
         }
         finally
         {
@@ -109,7 +109,14 @@ internal sealed class Program : IDisposable
 
     private async Task AttachAsync(JsonObject request)
     {
-        if (_process is not null) return;
+        if (_process is { HasExited: false } && _writer is not null) return;
+        ReleaseRenderer();
+        try { await AttachCoreAsync(request); }
+        catch { ReleaseRenderer(); throw; }
+    }
+
+    private async Task AttachCoreAsync(JsonObject request)
+    {
         string executable = request["executable"]?.GetValue<string>() ?? "";
         if (!File.Exists(executable) || !Path.GetFileName(executable).Equals("mpv.exe", StringComparison.OrdinalIgnoreCase))
             throw new FileNotFoundException("Select an installed mpv.exe to use this preview.", executable);
@@ -141,7 +148,7 @@ internal sealed class Program : IDisposable
         _pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.InOut, PipeOptions.Asynchronous);
         await _pipe.ConnectAsync(15000, _shutdown.Token);
         _writer = new StreamWriter(_pipe, new UTF8Encoding(false), 4096, leaveOpen: true) { AutoFlush = true };
-        _ = ReadEventsAsync();
+        _ = ReadEventsAsync(_pipe, _rendererGeneration);
         string[] properties =
         [
             "time-pos", "duration", "pause", "volume", "mute", "speed", "seekable", "video-params",
@@ -178,12 +185,12 @@ internal sealed class Program : IDisposable
         }
     }
 
-    private async Task ReadEventsAsync()
+    private async Task ReadEventsAsync(NamedPipeClientStream pipe, int generation)
     {
         try
         {
-            using var reader = new StreamReader(_pipe!, Encoding.UTF8, false, 4096, leaveOpen: true);
-            while (!_shutdown.IsCancellationRequested && await reader.ReadLineAsync(_shutdown.Token) is { } line)
+            using var reader = new StreamReader(pipe, Encoding.UTF8, false, 4096, leaveOpen: true);
+            while (generation == _rendererGeneration && !_shutdown.IsCancellationRequested && await reader.ReadLineAsync(_shutdown.Token) is { } line)
             {
                 var message = JsonNode.Parse(line)?.AsObject();
                 if (message?["request_id"] is { } requestId &&
@@ -202,12 +209,12 @@ internal sealed class Program : IDisposable
                     await SendEventAsync(kind, message!);
                 }
             }
-            if (!_shutdown.IsCancellationRequested)
+            if (generation == _rendererGeneration && !_shutdown.IsCancellationRequested)
                 await SendEventAsync("error", JsonValue.Create("The mpv connection closed.")!);
         }
-        catch (Exception exception) when (exception is IOException or OperationCanceledException or System.Text.Json.JsonException)
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException or OperationCanceledException or System.Text.Json.JsonException)
         {
-            if (!_shutdown.IsCancellationRequested) await SendEventAsync("error", JsonValue.Create(exception.Message)!);
+            if (generation == _rendererGeneration && !_shutdown.IsCancellationRequested) await SendEventAsync("error", JsonValue.Create(exception.Message)!);
         }
     }
 
@@ -229,19 +236,29 @@ internal sealed class Program : IDisposable
         }
     }
 
-    /// <summary>Releases the worker, pipe and only the mpv process started by this instance.</summary>
-    public void Dispose()
+    private void ReleaseRenderer()
     {
-        _shutdown.Cancel();
+        Interlocked.Increment(ref _rendererGeneration);
         _writer?.Dispose();
+        _writer = null;
         _pipe?.Dispose();
+        _pipe = null;
         if (_process is not null)
         {
             try { if (!_process.HasExited) _process.Kill(entireProcessTree: true); }
             catch (InvalidOperationException) { }
             _process.Dispose();
+            _process = null;
         }
         _window?.Dispose();
+        _window = null;
+    }
+
+    /// <summary>Releases the worker, pipe and only the mpv process started by this instance.</summary>
+    public void Dispose()
+    {
+        _shutdown.Cancel();
+        ReleaseRenderer();
         _connection.Dispose();
         _shutdown.Dispose();
     }

@@ -1,0 +1,7 @@
+@echo off
+setlocal
+set "SCREENBOX_KIT_DIR=%~dp0"
+powershell.exe -NoLogo -NoProfile -Command "$ErrorActionPreference='Stop'; try { $principal=New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent()); if(-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){ throw 'Right-click Install.cmd and choose Run as administrator. Unsigned MSIX installation requires administrator rights.' }; $root=$env:SCREENBOX_KIT_DIR; $package=@(Get-ChildItem -LiteralPath $root -File | Where-Object { $_.BaseName -eq 'ScreenboxMpvPreview' -and $_.Extension -in '.msix','.appx' }); if($package.Count -ne 1){ throw 'Extract the complete ZIP into a folder before installing.' }; $dependencies=@(); $dependencyRoot=Join-Path $root 'Dependencies'; if(Test-Path -LiteralPath $dependencyRoot){ $dependencies=@(Get-ChildItem -LiteralPath $dependencyRoot -Recurse -File | Where-Object { $_.Extension -in '.appx','.msix' } | Select-Object -ExpandProperty FullName) }; if($dependencies.Count -gt 0){ Add-AppxPackage -Path $package[0].FullName -DependencyPath $dependencies -AllowUnsigned } else { Add-AppxPackage -Path $package[0].FullName -AllowUnsigned }; Write-Host 'Installed. Open Screenbox mpv Preview from Start, then select your existing mpv.exe on first playback.' -ForegroundColor Green } catch { Write-Host $_.Exception.Message -ForegroundColor Red; exit 1 }"
+set "SCREENBOX_INSTALL_RESULT=%ERRORLEVEL%"
+pause
+exit /b %SCREENBOX_INSTALL_RESULT%

@@ -75,7 +75,7 @@ internal sealed partial class NativeVideoWindow : IDisposable
             _threadId = GetCurrentThreadId();
             if (!_ownsParent) SetThreadDpiAwarenessContext(GetWindowDpiAwarenessContext(_parent));
             if (_ownsParent) _parent = CreateWindowExW(0, "STATIC", "mpv surface self-test", 0, 0, 0, 640, 480, 0, 0, 0, 0);
-            _handle = CreateWindowExW(0x08000000, "STATIC", "Screenbox mpv video", 0x46000000,
+            _handle = CreateWindowExW(0x08000000, "STATIC", "Screenbox mpv video", 0x4E000000,
                 0, 0, 1, 1, _parent, 0, 0, 0);
             if (_handle == 0) throw new InvalidOperationException("Cannot create the embedded video window.");
             _ready.TrySetResult(_handle);
@@ -164,6 +164,7 @@ internal sealed partial class NativeVideoWindow : IDisposable
         await window.SetBoundsAsync(5, 7, 320, 180, false, holes).WaitAsync(TimeSpan.FromSeconds(10));
         if (GetClientRect(handle, out NativeRectangle rectangle) == 0 || rectangle.Right != 320 || rectangle.Bottom != 180)
             throw new InvalidOperationException("Native video bounds were not applied.");
+        if (IsWindowEnabled(handle) != 0) throw new InvalidOperationException("Video input must remain with the Screenbox parent.");
         if (IsChild(window._parent, handle) == 0) throw new InvalidOperationException("Video is not embedded as a child.");
         nint region = CreateRectRgn(0, 0, 0, 0);
         try
@@ -183,6 +184,7 @@ internal sealed partial class NativeVideoWindow : IDisposable
     }
 
     [LibraryImport("user32.dll")] private static partial int GetClientRect(nint window, out NativeRectangle rectangle);
+    [LibraryImport("user32.dll")] private static partial int IsWindowEnabled(nint window);
     [LibraryImport("user32.dll")] private static partial int IsChild(nint parent, nint child);
     [LibraryImport("user32.dll")] private static partial int GetWindowRgn(nint window, nint region);
     [LibraryImport("gdi32.dll")] private static partial int PtInRegion(nint region, int x, int y);
