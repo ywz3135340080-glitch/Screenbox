@@ -3,6 +3,9 @@ name: Screenbox mpv x64 preview
 on:
   push:
     branches: [codex/mpv-backend]
+    paths-ignore:
+      - 'scripts/mpv-preview/**'
+      - '.github/workflows/mpv-installer.yml'
   workflow_dispatch:
 
 permissions:

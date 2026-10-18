@@ -16,13 +16,18 @@ try {
   "Source: https://github.com/ywz3135340080-glitch/Screenbox/tree/$SourceCommit",
   "Source archive: https://github.com/ywz3135340080-glitch/Screenbox/archive/$SourceCommit.zip"
  ) | Set-Content -LiteralPath $source -Encoding utf8
+ $Payload=[IO.Path]::GetFullPath($Payload)
+ $Output=[IO.Path]::GetFullPath($Output)
+ $code=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "Setup.cs")).Path
+ $manifest=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "Setup.manifest")).Path
+ $engine=(Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "InstallEngine.ps1")).Path
  $arguments=@(
   "/nologo","/target:winexe","/platform:x64","/optimize+","/codepage:65001",
-  "/out:$Output","/win32manifest:$PSScriptRoot/Setup.manifest",
+  "/out:$Output","/win32manifest:$manifest",
   "/reference:System.Windows.Forms.dll","/reference:System.Drawing.dll",
   "/reference:System.IO.Compression.dll","/reference:System.IO.Compression.FileSystem.dll",
-  "/resource:$Payload,ScreenboxPayload.zip","/resource:$PSScriptRoot/InstallEngine.ps1,InstallEngine.ps1",
-  "/resource:$source,SetupSource.txt","$PSScriptRoot/Setup.cs"
+  "/resource:$Payload,ScreenboxPayload.zip","/resource:$engine,InstallEngine.ps1",
+  "/resource:$source,SetupSource.txt",$code
  )
  & $compiler @arguments
  if($LASTEXITCODE -ne 0){throw "Installer compilation failed."}
