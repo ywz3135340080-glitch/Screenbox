@@ -1,0 +1,69 @@
+name: Screenbox x64 development build
+
+on:
+  push:
+    branches: [codex/mpv-backend]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: screenbox-development-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Locate Visual Studio 2026 MSBuild
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $buildTool = & $vswhere -version "[18.0,19.0)" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $buildTool) { throw "Visual Studio 2026 MSBuild was not found." }
+          "SCREENBOX_MSBUILD=$buildTool" >> $env:GITHUB_ENV
+
+      - name: Configure unsigned development package
+        run: ./scripts/Update-AppxManifest.ps1 -Identity SideloadUnsigned
+
+      - name: Restore and build x64 application
+        run: |
+          & $env:SCREENBOX_MSBUILD Screenbox/Screenbox.csproj -restore -m -v:minimal -bl:screenbox-build.binlog -p:Configuration=Release -p:Platform=x64 -p:RestoreConfigFile=nuget.config -p:ContinuousIntegrationBuild=true -p:AppxBundle=Never -p:AppxBundlePlatforms=x64 -p:AppxPackageSigningEnabled=false -p:UapAppxPackageBuildMode=SideloadOnly
+          if ($LASTEXITCODE -ne 0) { throw "Application build failed with exit code $LASTEXITCODE." }
+
+      - name: Build automated tests
+        run: |
+          & $env:SCREENBOX_MSBUILD Screenbox.Core.Tests/Screenbox.Core.Tests.csproj -restore -m -v:minimal -p:Configuration=Release -p:Platform=x64 "-p:OutDir=$env:RUNNER_TEMP\ScreenboxTests\"
+          if ($LASTEXITCODE -ne 0) { throw "Test build failed with exit code $LASTEXITCODE." }
+
+      - name: Run automated tests
+        run: |
+          & "$env:RUNNER_TEMP\ScreenboxTests\Screenbox.Core.Tests.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Tests failed with exit code $LASTEXITCODE." }
+
+      - name: Upload unsigned baseline package
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenbox-x64-baseline
+          path: |
+            Screenbox/AppPackages/**/*.msix
+            Screenbox/AppPackages/**/*.msixbundle
+            Screenbox/AppPackages/**/*.appx
+            Screenbox/AppPackages/**/*.appxbundle
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenbox-build-diagnostics
+          path: screenbox-build.binlog
+          if-no-files-found: ignore
+          retention-days: 7
