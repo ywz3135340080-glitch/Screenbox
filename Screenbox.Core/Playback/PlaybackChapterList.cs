@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -39,6 +40,23 @@ public sealed partial class PlaybackChapterList : ReadOnlyCollection<ChapterCue>
         }
 
         vlcPlayer.Chapter = _chapters.FirstOrDefault();
+    }
+
+    /// <summary>Updates chapter navigation from mpv's chapter list.</summary>
+    internal void ReplaceMpv(JsonArray chapters, TimeSpan duration)
+    {
+        _chapters.Clear();
+        for (int i = 0; i < chapters.Count; i++)
+        {
+            double start = chapters[i]?["time"]?.GetValue<double>() ?? 0;
+            double end = i + 1 < chapters.Count ? chapters[i + 1]?["time"]?.GetValue<double>() ?? start : duration.TotalSeconds;
+            _chapters.Add(new ChapterCue
+            {
+                Title = chapters[i]?["title"]?.GetValue<string>() ?? (i + 1).ToString(),
+                StartTime = TimeSpan.FromSeconds(Math.Max(0, start)),
+                Duration = TimeSpan.FromSeconds(Math.Max(0, end - start))
+            });
+        }
     }
 
     private void Load(IEnumerable<ChapterDescription> vlcChapters)

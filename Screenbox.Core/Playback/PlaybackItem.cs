@@ -21,7 +21,23 @@ public class PlaybackItem
 
     public TimeSpan StartTime { get; set; }
 
-    public TimeSpan? Duration => Media.Duration > 0 ? TimeSpan.FromMilliseconds(Media.Duration) : null;
+    internal bool IsMpvBacked { get; }
+
+    internal TimeSpan? MpvDuration { get; set; }
+
+    public TimeSpan? Duration => IsMpvBacked ? MpvDuration : Media.Duration > 0 ? TimeSpan.FromMilliseconds(Media.Duration) : null;
+
+    /// <summary>Creates an mpv playback item whose tracks are supplied by the renderer.</summary>
+    internal PlaybackItem(object source)
+    {
+        OriginalSource = source;
+        IsMpvBacked = true;
+        Media = null!;
+        AudioTracks = new PlaybackAudioTrackList();
+        VideoTracks = new PlaybackVideoTrackList();
+        SubtitleTracks = new PlaybackSubtitleTrackList();
+        Chapters = new PlaybackChapterList(this);
+    }
 
     internal PlaybackItem(object source, Media media)
     {

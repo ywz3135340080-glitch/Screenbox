@@ -53,26 +53,26 @@ public sealed partial class PlayerService : IPlayerService
 
     public IMediaPlayer Initialize(string[] swapChainOptions)
     {
-        LibVLC lib = InitializeLibVlc(swapChainOptions);
-        VlcMediaPlayer mediaPlayer = new(lib);
-        return mediaPlayer;
+        return new MpvMediaPlayer();
     }
 
     public PlaybackItem CreatePlaybackItem(IMediaPlayer player, object source, params string[] options)
     {
+        if (player is MpvMediaPlayer) return new PlaybackItem(source);
         if (player is not VlcMediaPlayer vlcMediaPlayer)
-            throw new NotSupportedException("Only VlcMediaPlayer is supported");
+            throw new NotSupportedException("Unsupported player implementation.");
         Media media = CreateMedia(vlcMediaPlayer, source, options);
         return new PlaybackItem(source, media);
     }
 
     public void DisposePlaybackItem(PlaybackItem item)
     {
-        DisposeMedia(item.Media);
+        if (!item.IsMpvBacked) DisposeMedia(item.Media);
     }
 
     public void DisposePlayer(IMediaPlayer player)
     {
+        if (player is MpvMediaPlayer mpv) { mpv.Close(); return; }
         if (player is VlcMediaPlayer vlcMediaPlayer)
         {
             vlcMediaPlayer.VlcPlayer.Dispose();

@@ -74,4 +74,18 @@
     <ProjectReference Include="..\Screenbox.VideoView\Screenbox.VideoView.csproj" />
   </ItemGroup>
 
+  <Target Name="PublishMpvBridge" BeforeTargets="AssignTargetPaths" Condition="'$(DesignTimeBuild)' != 'true'">
+    <PropertyGroup>
+      <MpvBridgePublishDir>$(MSBuildProjectDirectory)\..\artifacts\MpvBridge\</MpvBridgePublishDir>
+    </PropertyGroup>
+    <MSBuild Projects="..\Screenbox.MpvBridge\Screenbox.MpvBridge.csproj"
+             Targets="Restore;Publish"
+             Properties="Configuration=$(Configuration);Platform=x64;RuntimeIdentifier=win-x64;PublishDir=$(MpvBridgePublishDir)" />
+    <ItemGroup>
+      <Content Include="$(MpvBridgePublishDir)**\*">
+        <Link>MpvBridge\%(RecursiveDir)%(Filename)%(Extension)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </Content>
+    </ItemGroup>
+  </Target>
 </Project>

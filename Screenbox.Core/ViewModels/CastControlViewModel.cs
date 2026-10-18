@@ -43,7 +43,7 @@ public sealed partial class CastControlViewModel : ObservableObject
 
     public void StartDiscovering()
     {
-        if (IsCasting || MediaPlayer == null) return;
+        if (IsCasting || MediaPlayer is not VlcMediaPlayer) return;
 
         var watcher = _castService.CreateRendererWatcher(MediaPlayer);
         _castContext.RendererWatcher = watcher;

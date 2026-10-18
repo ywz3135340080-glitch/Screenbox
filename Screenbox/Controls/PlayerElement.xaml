@@ -36,14 +36,13 @@
             <Border Background="Transparent" />
         </UserControl>
 
-        <vlcSharp:VideoView
+        <vlcSharp:MpvVideoView
             x:Name="VlcVideoView"
             Canvas.ZIndex="0"
             FlowDirection="LeftToRight"
             Initialized="VlcVideoView_OnInitialized"
             IsHitTestVisible="False"
             KeyboardAcceleratorPlacementMode="Hidden"
-            MediaPlayer="{x:Bind ViewModel.VlcPlayer}"
             SizeChanged="VlcVideoView_OnSizeChanged" />
     </Grid>
 </UserControl>

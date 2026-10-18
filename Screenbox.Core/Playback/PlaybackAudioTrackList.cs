@@ -9,6 +9,9 @@ public sealed partial class PlaybackAudioTrackList : SingleSelectTrackList<Audio
     private readonly Media? _media;
     private readonly MediaPlaybackAudioTrackList? _source;
 
+    /// <summary>Creates an empty track list populated from mpv metadata.</summary>
+    public PlaybackAudioTrackList() { }
+
     public PlaybackAudioTrackList(Media media)
     {
         _media = media;

@@ -30,7 +30,13 @@ jobs:
           "SCREENBOX_MSBUILD=$buildTool" >> $env:GITHUB_ENV
 
       - name: Configure unsigned development package
-        run: ./scripts/Update-AppxManifest.ps1 -Identity SideloadUnsigned
+        run: |
+          ./scripts/Update-AppxManifest.ps1 -Identity SideloadUnsigned
+          [xml]$manifest = Get-Content Screenbox/Package.appxmanifest -Raw
+          $manifest.Package.Identity.Name = "Screenbox.MpvPreview"
+          $manifest.Package.Properties.DisplayName = "Screenbox mpv Preview"
+          $manifest.Package.Applications.Application.VisualElements.DisplayName = "Screenbox mpv Preview"
+          $manifest.Save((Join-Path $PWD "Screenbox/Package.appxmanifest"))
 
       - name: Restore and build x64 application
         run: |
@@ -50,7 +56,7 @@ jobs:
       - name: Upload unsigned baseline package
         uses: actions/upload-artifact@v7
         with:
-          name: screenbox-x64-baseline
+          name: screenbox-mpv-x64-preview
           path: |
             Screenbox/AppPackages/**/*.msix
             Screenbox/AppPackages/**/*.msixbundle

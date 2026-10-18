@@ -34,6 +34,13 @@ public partial class SingleSelectTrackList<T> : IReadOnlyList<T>, ISingleSelectM
         _selectedIndex = -1;
     }
 
+    /// <summary>Replaces renderer-provided tracks without sending intermediate selections back to mpv.</summary>
+    internal void ReplaceMpv(IEnumerable<T> tracks)
+    {
+        TrackList.Clear();
+        TrackList.AddRange(tracks);
+    }
+
     public IEnumerator<T> GetEnumerator()
     {
         return TrackList.GetEnumerator();

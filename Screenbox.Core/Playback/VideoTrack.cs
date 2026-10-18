@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using CommunityToolkit.Diagnostics;
 using LibVLCSharp.Shared;
 
@@ -8,6 +9,14 @@ public sealed partial class VideoTrack : MediaTrack
     internal int VlcTrackId { get; }
 
     public string Name { get; }
+
+    /// <summary>Creates a track from mpv's stable track identifier and display metadata.</summary>
+    internal VideoTrack(JsonNode track) : base(Windows.Media.Core.MediaTrackKind.Video, track["lang"]?.GetValue<string>() ?? "")
+    {
+        Id = track["id"]!.ToJsonString();
+        Name = track["title"]?.GetValue<string>() ?? track["lang"]?.GetValue<string>() ?? Id;
+        Label = Name;
+    }
 
     public VideoTrack(LibVLCSharp.Shared.MediaTrack videoTrack) : base(videoTrack)
     {

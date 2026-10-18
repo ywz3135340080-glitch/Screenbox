@@ -9,6 +9,9 @@ public sealed partial class PlaybackVideoTrackList : SingleSelectTrackList<Video
     private readonly Media? _media;
     private readonly MediaPlaybackVideoTrackList? _source;
 
+    /// <summary>Creates an empty track list populated from mpv metadata.</summary>
+    public PlaybackVideoTrackList() { }
+
     public PlaybackVideoTrackList(Media media)
     {
         _media = media;

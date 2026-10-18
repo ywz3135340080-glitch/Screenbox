@@ -442,6 +442,14 @@ public sealed partial class PlayerControlsViewModel : ObservableRecipient,
 
     private async Task<StorageFile> SaveSnapshotInternalAsync(IMediaPlayer mediaPlayer)
     {
+        if (mediaPlayer is MpvMediaPlayer mpv)
+        {
+            StorageFile target = await ApplicationData.Current.LocalCacheFolder.CreateFileAsync(
+                "Screenbox-" + DateTime.Now.ToString("yyyyMMdd-HHmmss-fff") + ".png", CreationCollisionOption.GenerateUniqueName);
+            await mpv.SaveScreenshotAsync(target.Path);
+            return target;
+        }
+
         if (mediaPlayer is not VlcMediaPlayer player)
         {
             throw new NotImplementedException("Not supported on non VLC players");

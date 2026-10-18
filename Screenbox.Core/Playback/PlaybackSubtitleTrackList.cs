@@ -9,7 +9,7 @@ namespace Screenbox.Core.Playback;
 
 public sealed partial class PlaybackSubtitleTrackList : SingleSelectTrackList<SubtitleTrack>
 {
-    private readonly Media _media;
+    private readonly Media? _media;
     private readonly List<LazySubtitleTrack> _pendingSubtitleTracks;
 
     private class LazySubtitleTrack
@@ -34,6 +34,12 @@ public sealed partial class PlaybackSubtitleTrackList : SingleSelectTrackList<Su
     }
 
     private int _delaySpu = -1;
+
+    /// <summary>Creates a subtitle list populated by mpv.</summary>
+    public PlaybackSubtitleTrackList()
+    {
+        _pendingSubtitleTracks = new List<LazySubtitleTrack>();
+    }
 
     public PlaybackSubtitleTrackList(Media media)
     {
@@ -87,6 +93,17 @@ public sealed partial class PlaybackSubtitleTrackList : SingleSelectTrackList<Su
         }
     }
 
+    /// <summary>Adds an external subtitle using the active playback engine.</summary>
+    public void AddExternalSubtitle(IMediaPlayer player, StorageFile file, bool select)
+    {
+        if (player is MpvMediaPlayer mpv)
+        {
+            mpv.AddSubtitle(file, select);
+            return;
+        }
+        if (player is VlcMediaPlayer vlc) AddExternalSubtitle(vlc, file, select);
+    }
+
     public void AddExternalSubtitle(VlcMediaPlayer player, StorageFile file, bool select)
     {
         string filePath = file.Path;
@@ -131,7 +148,7 @@ public sealed partial class PlaybackSubtitleTrackList : SingleSelectTrackList<Su
 
     private void Media_ParsedChanged(object? sender, MediaParsedChangedEventArgs e)
     {
-        if (e.ParsedStatus != MediaParsedStatus.Done) return;
+        if (_media is null || e.ParsedStatus != MediaParsedStatus.Done) return;
         _media.ParsedChanged -= Media_ParsedChanged;
         AddVlcMediaTracks(_media.Tracks);
         if (_delaySpu >= 0)

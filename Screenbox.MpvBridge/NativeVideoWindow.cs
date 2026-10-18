@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -27,11 +28,26 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
 
     internal bool ParentExists => IsWindow(_parent) != 0;
 
-    internal void SetBounds(int x, int y, int width, int height, bool visible)
+    internal void SetBounds(int x, int y, int width, int height, bool visible, JsonArray? holes = null)
     {
         _pending.Enqueue(() =>
         {
             SetWindowPos(_handle, 0, x, y, Math.Max(1, width), Math.Max(1, height), 0x0014);
+            nint region = CreateRectRgn(0, 0, Math.Max(1, width), Math.Max(1, height));
+            if (holes is not null)
+            {
+                foreach (JsonNode? hole in holes)
+                {
+                    int left = hole?["x"]?.GetValue<int>() ?? 0;
+                    int top = hole?["y"]?.GetValue<int>() ?? 0;
+                    int right = left + (hole?["width"]?.GetValue<int>() ?? 0);
+                    int bottom = top + (hole?["height"]?.GetValue<int>() ?? 0);
+                    nint cutout = CreateRectRgn(left, top, right, bottom);
+                    CombineRgn(region, region, cutout, 4);
+                    DeleteObject(cutout);
+                }
+            }
+            if (SetWindowRgn(_handle, region, 1) == 0) DeleteObject(region);
             ShowWindow(_handle, visible && width > 0 && height > 0 ? 4 : 0);
         });
         PostThreadMessageW(_threadId, 0x8001, 0, 0);
@@ -149,5 +165,9 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
     [LibraryImport("user32.dll")] private static partial int GetClassNameW(nint window, char* className, int capacity);
     [LibraryImport("user32.dll")] private static partial int EnumWindows(delegate* unmanaged[Stdcall]<nint, nint, int> callback, nint state);
     [LibraryImport("user32.dll")] private static partial int EnumChildWindows(nint parent, delegate* unmanaged[Stdcall]<nint, nint, int> callback, nint state);
+    [LibraryImport("gdi32.dll")] private static partial nint CreateRectRgn(int left, int top, int right, int bottom);
+    [LibraryImport("gdi32.dll")] private static partial int CombineRgn(nint target, nint source1, nint source2, int mode);
+    [LibraryImport("gdi32.dll")] private static partial int DeleteObject(nint handle);
+    [LibraryImport("user32.dll")] private static partial int SetWindowRgn(nint window, nint region, int redraw);
     [LibraryImport("kernel32.dll")] private static partial uint GetCurrentThreadId();
 }

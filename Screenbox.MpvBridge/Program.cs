@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Pipes;
 using System.Text;
@@ -21,6 +22,8 @@ internal sealed class Program : IDisposable
     private readonly SemaphoreSlim _sendGate = new(1);
     private readonly object _stateLock = new();
     private JsonObject _state = new();
+    private readonly ConcurrentDictionary<long, TaskCompletionSource<JsonObject>> _requests = new();
+    private long _nextRequest;
     private NativeVideoWindow? _window;
     private Process? _process;
     private NamedPipeClientStream? _pipe;
@@ -72,10 +75,10 @@ internal sealed class Program : IDisposable
                     break;
                 case "bounds":
                     _window?.SetBounds(Number(request, "x"), Number(request, "y"), Number(request, "width"), Number(request, "height"),
-                        request["visible"]?.GetValue<bool>() ?? false);
+                        request["visible"]?.GetValue<bool>() ?? false, request["holes"] as JsonArray);
                     break;
                 case "command":
-                    await WriteCommandAsync(request["payload"]?.AsObject() ?? throw new InvalidDataException("Missing mpv command."));
+                    await ExecuteCommandAsync(request["payload"]?.AsObject() ?? throw new InvalidDataException("Missing mpv command."));
                     break;
                 case "close":
                     _shutdown.Cancel();
@@ -150,6 +153,25 @@ internal sealed class Program : IDisposable
         finally { _writeGate.Release(); }
     }
 
+    private async Task ExecuteCommandAsync(JsonObject command)
+    {
+        long id = Interlocked.Increment(ref _nextRequest);
+        var completion = new TaskCompletionSource<JsonObject>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _requests[id] = completion;
+        command["request_id"] = id;
+        try
+        {
+            await WriteCommandAsync(command);
+            JsonObject response = await completion.Task.WaitAsync(TimeSpan.FromSeconds(30), _shutdown.Token);
+            string? error = response["error"]?.GetValue<string>();
+            if (error != "success") throw new InvalidOperationException("mpv: " + error);
+        }
+        finally
+        {
+            _requests.TryRemove(id, out _);
+        }
+    }
+
     private async Task ReadEventsAsync()
     {
         try
@@ -158,6 +180,12 @@ internal sealed class Program : IDisposable
             while (!_shutdown.IsCancellationRequested && await reader.ReadLineAsync(_shutdown.Token) is { } line)
             {
                 var message = JsonNode.Parse(line)?.AsObject();
+                if (message?["request_id"] is { } requestId &&
+                    _requests.TryRemove(requestId.GetValue<long>(), out var completion))
+                {
+                    completion.TrySetResult(message);
+                    continue;
+                }
                 string? kind = message?["event"]?.GetValue<string>();
                 if (kind == "property-change" && message!["name"]?.GetValue<string>() is { } property)
                 {

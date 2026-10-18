@@ -22,6 +22,8 @@ using Sentry.Protocol;
 using Windows.ApplicationModel;
 using Windows.ApplicationModel.Activation;
 using Windows.ApplicationModel.Core;
+using Windows.ApplicationModel.AppService;
+using Screenbox.Core.Playback;
 using Windows.UI.Xaml;
 using Windows.UI.Xaml.Controls;
 using Windows.UI.Xaml.Navigation;
@@ -73,6 +75,19 @@ sealed partial class App : Application
         _telemetryService = _services.GetRequiredService<ITelemetryService>();
 
         Suspending += OnSuspending;
+    }
+
+    /// <summary>Accepts only the renderer service belonging to this installed Screenbox package.</summary>
+    protected override void OnBackgroundActivated(BackgroundActivatedEventArgs args)
+    {
+        if (args.TaskInstance.TriggerDetails is AppServiceTriggerDetails details &&
+            details.Name == "Screenbox.Mpv" &&
+            details.CallerPackageFamilyName == Package.Current.Id.FamilyName)
+        {
+            MpvConnection.Current.Accept(details.AppServiceConnection, args.TaskInstance.GetDeferral());
+            return;
+        }
+        base.OnBackgroundActivated(args);
     }
 
     [SecurityCritical]

@@ -7,7 +7,9 @@
   xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
   xmlns:uap5="http://schemas.microsoft.com/appx/manifest/uap/windows10/5"
   xmlns:desktop4="http://schemas.microsoft.com/appx/manifest/desktop/windows10/4"
-  IgnorableNamespaces="uap uap3 uap5 mp desktop4">
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap3 uap5 mp desktop4 desktop rescap">
 
   <Identity
     Name="Screenbox"
@@ -23,7 +25,7 @@
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.0.0" MaxVersionTested="10.0.0.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.0.0" MaxVersionTested="10.0.0.0" />
   </Dependencies>
 
   <Resources>
@@ -34,7 +36,7 @@
     <Application Id="App"
       Executable="$targetnametoken$.exe"
       EntryPoint="Screenbox.App"
-      desktop4:SupportsMultipleInstances="true">
+      desktop4:SupportsMultipleInstances="false">
       <uap:VisualElements
         DisplayName="[Debug] Screenbox"
         Square150x150Logo="Assets\Square150x150Logo.png"
@@ -51,6 +53,14 @@
         <uap:SplashScreen Image="Assets\SplashScreen.png" uap5:Optional="true" />
       </uap:VisualElements>
       <Extensions>
+        <uap:Extension Category="windows.appService">
+          <uap:AppService Name="Screenbox.Mpv" />
+        </uap:Extension>
+        <desktop:Extension Category="windows.fullTrustProcess" EntryPoint="Windows.FullTrustApplication" Executable="MpvBridge\Screenbox.MpvBridge.exe">
+          <desktop:FullTrustProcess>
+            <desktop:ParameterGroup GroupId="MpvBridge" Parameters="--packaged" />
+          </desktop:FullTrustProcess>
+        </desktop:Extension>
         <uap:Extension Category="windows.fileTypeAssociation">
           <uap:FileTypeAssociation Name="3gpp">
             <uap:DisplayName>ms-resource:ManifestResources/FileDisplayName3GPP</uap:DisplayName>
@@ -558,6 +568,7 @@
   </Applications>
 
   <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
     <Capability Name="internetClient" />
     <uap3:Capability Name="backgroundMediaPlayback" />
     <uap:Capability Name="videosLibrary" />

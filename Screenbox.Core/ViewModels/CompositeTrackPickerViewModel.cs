@@ -286,7 +286,7 @@ public sealed partial class CompositeTrackPickerViewModel : ObservableRecipient,
     {
         try
         {
-            if (ItemSubtitleTrackList == null || MediaPlayer is not VlcMediaPlayer player) return;
+            if (ItemSubtitleTrackList is null || MediaPlayer is not { } player) return;
             StorageFile? file = await _filesService.PickFileAsync(FilesHelpers.SupportedSubtitleFormats.Add("*").ToArray());
             if (file == null) return;
 

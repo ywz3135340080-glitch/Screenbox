@@ -59,10 +59,10 @@ public sealed partial class PlaybackSessionViewModel : ObservableRecipient,
         newPlayer.PlaybackRateChanged += OnPlayerPlaybackRateChanged;
         newPlayer.PlaybackRate = PlaybackRate;
 
-        if (newPlayer is VlcMediaPlayer vlcMediaPlayer)
+        if (newPlayer is MpvMediaPlayer mpvMediaPlayer)
         {
-            vlcMediaPlayer.AudioDelay = AudioTimingOffset;
-            vlcMediaPlayer.SubtitleDelay = SubtitleTimingOffset;
+            mpvMediaPlayer.AudioDelay = AudioTimingOffset;
+            mpvMediaPlayer.SubtitleDelay = SubtitleTimingOffset;
         }
     }
 
@@ -90,9 +90,9 @@ public sealed partial class PlaybackSessionViewModel : ObservableRecipient,
         if (MediaPlayer is null)
             return;
 
-        if (MediaPlayer is VlcMediaPlayer vlcMediaPlayer)
+        if (MediaPlayer is MpvMediaPlayer mpvMediaPlayer)
         {
-            vlcMediaPlayer.AudioDelay = value;
+            mpvMediaPlayer.AudioDelay = value;
         }
     }
 
@@ -101,9 +101,9 @@ public sealed partial class PlaybackSessionViewModel : ObservableRecipient,
         if (MediaPlayer is null)
             return;
 
-        if (MediaPlayer is VlcMediaPlayer vlcMediaPlayer)
+        if (MediaPlayer is MpvMediaPlayer mpvMediaPlayer)
         {
-            vlcMediaPlayer.SubtitleDelay = value;
+            mpvMediaPlayer.SubtitleDelay = value;
         }
     }
 
