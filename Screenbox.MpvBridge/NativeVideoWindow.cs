@@ -6,7 +6,7 @@ using System.Runtime.InteropServices;
 namespace Screenbox.MpvBridge;
 
 /// <summary>Owns the child window used by mpv's native gpu-next renderer.</summary>
-internal sealed unsafe partial class NativeVideoWindow : IDisposable
+internal sealed partial class NativeVideoWindow : IDisposable
 {
     private readonly ConcurrentQueue<Action> _pending = new();
     private readonly TaskCompletionSource<nint> _ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -73,6 +73,7 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
         try
         {
             _threadId = GetCurrentThreadId();
+            if (!_ownsParent) SetThreadDpiAwarenessContext(GetWindowDpiAwarenessContext(_parent));
             if (_ownsParent) _parent = CreateWindowExW(0, "STATIC", "mpv surface self-test", 0, 0, 0, 640, 480, 0, 0, 0, 0);
             _handle = CreateWindowExW(0x08000000, "STATIC", "Screenbox mpv video", 0x46000000,
                 0, 0, 1, 1, _parent, 0, 0, 0);
@@ -108,7 +109,7 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
         internal nint Found;
     }
 
-    private static nint FindCoreWindow(int processId)
+    private static unsafe nint FindCoreWindow(int processId)
     {
         var search = new WindowSearch(processId);
         GCHandle state = GCHandle.Alloc(search);
@@ -124,7 +125,7 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvStdcall)])]
-    private static int VisitTopLevel(nint window, nint state)
+    private static unsafe int VisitTopLevel(nint window, nint state)
     {
         CheckCandidate(window, state);
         EnumChildWindows(window, &VisitChild, state);
@@ -138,7 +139,7 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
         return ((WindowSearch)GCHandle.FromIntPtr(state).Target!).Found == 0 ? 1 : 0;
     }
 
-    private static void CheckCandidate(nint window, nint state)
+    private static unsafe void CheckCandidate(nint window, nint state)
     {
         var search = (WindowSearch)GCHandle.FromIntPtr(state).Target!;
         GetWindowThreadProcessId(window, out uint processId);
@@ -210,12 +211,14 @@ internal sealed unsafe partial class NativeVideoWindow : IDisposable
     [LibraryImport("user32.dll")] private static partial int ShowWindow(nint window, int command);
     [LibraryImport("user32.dll")] private static partial int IsWindow(nint window);
     [LibraryImport("user32.dll")] private static partial uint GetWindowThreadProcessId(nint window, out uint processId);
-    [LibraryImport("user32.dll")] private static partial int GetClassNameW(nint window, char* className, int capacity);
-    [LibraryImport("user32.dll")] private static partial int EnumWindows(delegate* unmanaged[Stdcall]<nint, nint, int> callback, nint state);
-    [LibraryImport("user32.dll")] private static partial int EnumChildWindows(nint parent, delegate* unmanaged[Stdcall]<nint, nint, int> callback, nint state);
+    [LibraryImport("user32.dll")] private static unsafe partial int GetClassNameW(nint window, char* className, int capacity);
+    [LibraryImport("user32.dll")] private static unsafe partial int EnumWindows(delegate* unmanaged[Stdcall]<nint, nint, int> callback, nint state);
+    [LibraryImport("user32.dll")] private static unsafe partial int EnumChildWindows(nint parent, delegate* unmanaged[Stdcall]<nint, nint, int> callback, nint state);
     [LibraryImport("gdi32.dll")] private static partial nint CreateRectRgn(int left, int top, int right, int bottom);
     [LibraryImport("gdi32.dll")] private static partial int CombineRgn(nint target, nint source1, nint source2, int mode);
     [LibraryImport("gdi32.dll")] private static partial int DeleteObject(nint handle);
     [LibraryImport("user32.dll")] private static partial int SetWindowRgn(nint window, nint region, int redraw);
+    [LibraryImport("user32.dll")] private static partial nint SetThreadDpiAwarenessContext(nint context);
+    [LibraryImport("user32.dll")] private static partial nint GetWindowDpiAwarenessContext(nint window);
     [LibraryImport("kernel32.dll")] private static partial uint GetCurrentThreadId();
 }

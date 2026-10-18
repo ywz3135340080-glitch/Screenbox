@@ -19,6 +19,21 @@ public sealed class MpvConnection
     /// <summary>Notifies the player adapter about mpv state and lifecycle changes on the UI thread.</summary>
     public event Action<string, JsonNode?>? EventReceived;
 
+    /// <summary>Requests runtime selection when playback starts without an attached renderer.</summary>
+    public event Action? InitializationRequested;
+
+    /// <summary>Gets whether the renderer has completed startup.</summary>
+    public bool IsAttached => _attached.Task.IsCompletedSuccessfully;
+
+    /// <summary>Prompts the active view to configure its renderer when needed.</summary>
+    public void RequestInitialization()
+    {
+        if (!IsAttached) _dispatcher?.TryEnqueue(() => InitializationRequested?.Invoke());
+    }
+
+    /// <summary>Returns a cancelled setup attempt to a resumable player state.</summary>
+    public void CancelInitialization() => Publish("initialization-canceled", null);
+
     private readonly TaskCompletionSource<AppServiceConnection> _connected = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly TaskCompletionSource<bool> _attached = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly SemaphoreSlim _sendGate = new(1);
@@ -51,7 +66,8 @@ public sealed class MpvConnection
         if (_attached.Task.IsCompletedSuccessfully) return;
         try
         {
-            await FullTrustProcessLauncher.LaunchFullTrustProcessForCurrentAppAsync("MpvBridge");
+            if (!_connected.Task.IsCompleted)
+                await FullTrustProcessLauncher.LaunchFullTrustProcessForCurrentAppAsync("MpvBridge");
             var connection = await _connected.Task.WaitAsync(TimeSpan.FromSeconds(20));
             await SendRawAsync(connection, new JsonObject
             {
@@ -61,8 +77,7 @@ public sealed class MpvConnection
         }
         catch (Exception exception)
         {
-            _attached.TrySetException(exception);
-            Publish("error", JsonValue.Create(exception.Message));
+            Publish("initialization-error", JsonValue.Create(exception.Message));
             throw;
         }
     }

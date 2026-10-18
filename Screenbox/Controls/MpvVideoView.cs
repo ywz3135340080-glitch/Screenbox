@@ -1,3 +1,6 @@
+using CommunityToolkit.Mvvm.Messaging;
+using Screenbox.Core.Enums;
+using Screenbox.Core.Messages;
 using System;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -19,6 +22,9 @@ public sealed partial class MpvVideoView : FrameworkElement
 
     private readonly DispatcherQueueTimer _layoutTimer;
     private bool _started;
+    private bool _initialized;
+    private bool _starting;
+    private bool _loaded;
     private bool _updating;
     private string _lastBounds = "";
 
@@ -34,11 +40,30 @@ public sealed partial class MpvVideoView : FrameworkElement
         Unloaded += OnUnloaded;
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs args)
+    private void OnLoaded(object sender, RoutedEventArgs args)
     {
-        if (_started) { _layoutTimer.Start(); return; }
-        _started = true;
-        Initialized?.Invoke(this, new VideoViewInitializedEventArgs(Array.Empty<string>()));
+        _loaded = true;
+        MpvConnection.Current.InitializationRequested -= OnInitializationRequested;
+        MpvConnection.Current.InitializationRequested += OnInitializationRequested;
+        if (!_initialized)
+        {
+            _initialized = true;
+            Initialized?.Invoke(this, new VideoViewInitializedEventArgs(Array.Empty<string>()));
+        }
+        if (MpvConnection.Current.IsAttached) { _started = true; _layoutTimer.Start(); }
+        else if (ApplicationData.Current.LocalSettings.Values.ContainsKey("MpvExecutable"))
+            _ = EnsureRendererAsync();
+    }
+
+    private async void OnInitializationRequested()
+    {
+        if (_loaded) await EnsureRendererAsync();
+    }
+
+    private async Task EnsureRendererAsync()
+    {
+        if (_starting || MpvConnection.Current.IsAttached) return;
+        _starting = true;
         try
         {
             var settings = ApplicationData.Current.LocalSettings;
@@ -48,28 +73,35 @@ public sealed partial class MpvVideoView : FrameworkElement
                 var picker = new FileOpenPicker { SuggestedStartLocation = PickerLocationId.ComputerFolder };
                 picker.FileTypeFilter.Add(".exe");
                 StorageFile? file = await picker.PickSingleFileAsync();
-                if (file is null) return;
-                if (!file.Name.Equals("mpv.exe", StringComparison.OrdinalIgnoreCase))
+                if (file is null || !file.Name.Equals("mpv.exe", StringComparison.OrdinalIgnoreCase))
                 {
-                    _started = false;
+                    MpvConnection.Current.CancelInitialization();
                     return;
                 }
                 executable = file.Path;
                 settings.Values["MpvExecutable"] = executable;
             }
             await MpvConnection.Current.AttachAsync(executable, Environment.ProcessId);
+            _started = true;
             _layoutTimer.Start();
             await UpdateBoundsAsync();
         }
-        catch (Exception)
+        catch (Exception exception)
         {
-            // The playback adapter surfaces renderer initialization failures through MediaFailed.
-            _started = false;
+            ApplicationData.Current.LocalSettings.Values.Remove("MpvExecutable");
+            WeakReferenceMessenger.Default.Send(new NotificationMessage(
+                NotificationLevel.Error, NotificationKind.InitializationFailed, message: exception.Message));
+        }
+        finally
+        {
+            _starting = false;
         }
     }
 
     private async void OnUnloaded(object sender, RoutedEventArgs args)
     {
+        _loaded = false;
+        MpvConnection.Current.InitializationRequested -= OnInitializationRequested;
         _layoutTimer.Stop();
         if (!_started) return;
         try { await MpvConnection.Current.SetBoundsAsync(0, 0, 0, 0, false); }

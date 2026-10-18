@@ -131,6 +131,7 @@ public sealed class MpvMediaPlayer : IMediaPlayer
     public void Play()
     {
         if (_item is null) return;
+        _connection.RequestInitialization();
         if (_needsLoad)
         {
             _needsLoad = false;
@@ -250,7 +251,13 @@ public sealed class MpvMediaPlayer : IMediaPlayer
     private void OnEvent(string kind, JsonNode? data)
     {
         if (_closed) return;
-        if (kind == "error")
+        if (kind is "initialization-canceled" or "initialization-error")
+        {
+            _generation++;
+            _needsLoad = _item is not null;
+            if (_item is not null) ChangeState(MediaPlaybackState.Paused);
+        }
+        else if (kind == "error")
         {
             if (_item is not null) { ChangeState(MediaPlaybackState.None); MediaFailed?.Invoke(this, EventArgs.Empty); }
         }
