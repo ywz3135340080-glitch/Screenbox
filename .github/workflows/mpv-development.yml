@@ -67,10 +67,29 @@ jobs:
       - name: Create preview installation kit
         run: ./scripts/Export-MpvPreviewKit.ps1
 
+      - name: Build graphical installer
+        run: ./scripts/mpv-preview/Build-Setup.ps1 -SourceCommit $env:GITHUB_SHA
+
+      - name: Verify graphical installer and render interface
+        run: |
+          $installer = Join-Path $PWD "artifacts/ScreenboxMpvPreview-Setup.exe"
+          $test = Start-Process -FilePath $installer -ArgumentList "--self-test" -WindowStyle Hidden -Wait -PassThru
+          if ($test.ExitCode -ne 0) { throw "Graphical installer payload self-test failed." }
+          $preview = Join-Path $PWD "artifacts/setup-preview.png"
+          $render = Start-Process -FilePath $installer -ArgumentList @("--render", $preview) -WindowStyle Hidden -Wait -PassThru
+          if ($render.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $preview)) { throw "Graphical installer rendering failed." }
+
+      - name: Upload graphical installer
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/ScreenboxMpvPreview-Setup.exe
+          archive: false
+          retention-days: 30
+
       - name: Upload preview installation kit
         uses: actions/upload-artifact@v7
         with:
-          name: screenbox-mpv-x64-preview
+          name: screenbox-mpv-internal-payload
           path: artifacts/ScreenboxMpvPreview-x64.zip
           if-no-files-found: error
           retention-days: 30
@@ -80,6 +99,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: screenbox-build-diagnostics
-          path: screenbox-build.binlog
+          path: |
+            screenbox-build.binlog
+            artifacts/setup-preview.png
+            setup-selftest.txt
           if-no-files-found: ignore
           retention-days: 7
