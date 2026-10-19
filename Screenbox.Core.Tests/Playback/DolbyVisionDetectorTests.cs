@@ -4,7 +4,7 @@ using Screenbox.Core.Playback;
 
 namespace Screenbox.Core.Tests.Playback;
 
-public class DolbyVisionDetectorTests
+public partial class DolbyVisionDetectorTests
 {
     [Test]
     public async Task ReadConfiguration_Profile5_ShouldReadFlagsAndRestorePosition()
@@ -14,7 +14,7 @@ public class DolbyVisionDetectorTests
         var result = await DolbyVisionDetector.ReadConfigurationAsync(stream);
         await Assert.That(result is { Profile: 5, Level: 6, HasRpu: true,
             HasBaseLayer: true, HasEnhancementLayer: false, BaseLayerCompatibilityId: 0 }).IsTrue();
-        await Assert.That(result?.IsProfile5SingleLayer).IsEqualTo(true);
+        await Assert.That(result is { IsProfile5SingleLayer: true }).IsTrue();
         await Assert.That(stream.Position).IsEqualTo(3L);
     }
 
@@ -24,7 +24,7 @@ public class DolbyVisionDetectorTests
         using var stream = new MemoryStream(Movie(Configuration(8, 9, 5, 1), "hvc1"));
         var result = await DolbyVisionDetector.ReadConfigurationAsync(stream);
         await Assert.That(result is { Profile: 8, Level: 9, BaseLayerCompatibilityId: 1 }).IsTrue();
-        await Assert.That(result?.IsProfile5SingleLayer).IsEqualTo(false);
+        await Assert.That(result is { IsProfile5SingleLayer: false }).IsTrue();
     }
 
     [Test]
@@ -144,13 +144,13 @@ public class DolbyVisionDetectorTests
         return data;
     }
 
-    private sealed class ShortReadStream(byte[] bytes) : MemoryStream(bytes)
+    private sealed partial class ShortReadStream(byte[] bytes) : MemoryStream(bytes)
     {
         public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken token = default) =>
             base.ReadAsync(buffer[..Math.Min(1, buffer.Length)], token);
     }
 
-    private sealed class SparseMediaStream(byte[] movie) : Stream
+    private sealed partial class SparseMediaStream(byte[] movie) : Stream
     {
         private const long MediaSize = 4L * 1024 * 1024 * 1024;
         public long BytesRead { get; private set; }
