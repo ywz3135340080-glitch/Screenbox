@@ -15,6 +15,11 @@
 #include <libplacebo/renderer.h>
 #include <libplacebo/utils/libav.h>
 
+static void native_log(void *priv, enum pl_log_level level, const char *message)
+{
+    (void)priv;
+    fprintf(stderr, "Native color (%d): %s\n", level, message);
+}
 static const AVRational ticks_base = {1, 10000000};
 struct sb_decoder {
     AVFormatContext *format;
@@ -81,7 +86,7 @@ static int init_video(sb_decoder *d, int width, int height)
 {
     if (width <= 0 || height <= 0 || width > 16384 || height > 16384 ||
         (width & 1) || (height & 1)) return AVERROR_INVALIDDATA;
-    d->log = pl_log_create(PL_API_VER, pl_log_params(.log_level = PL_LOG_NONE));
+    d->log = pl_log_create(PL_API_VER, pl_log_params(.log_cb = native_log, .log_level = PL_LOG_WARN));
     d->device = pl_d3d11_create(d->log, pl_d3d11_params(.allow_software = true));
     if (!d->device) return AVERROR_EXTERNAL;
     d->renderer = pl_renderer_create(d->log, d->device->gpu);
@@ -214,11 +219,20 @@ static int convert_video(sb_decoder *d, int require_dovi)
         return AVERROR_EXTERNAL;
     int result = AVERROR_EXTERNAL;
     if (require_dovi && (source.repr.sys != PL_COLOR_SYSTEM_DOLBYVISION || !source.repr.dovi))
-        goto done;
+        { fprintf(stderr, "Dolby metadata mapping failed\n"); goto done; }
     if (!pl_render_image(d->renderer, &source, &d->target, &pl_render_default_params))
-        goto done;
-    if (!pl_download_avframe(d->device->gpu, &d->target, d->output))
-        goto done;
+        { fprintf(stderr, "P010 render failed\n"); goto done; }
+    // D3D11 has no asynchronous transfer callbacks. Download each P010 plane
+    // synchronously instead of the libav helper's async multi-plane path.
+    for (int p = 0; p < d->target.num_planes; ++p) {
+        if (!pl_tex_download(d->device->gpu, pl_tex_transfer_params(
+            .tex = d->target.planes[p].texture,
+            .row_pitch = d->output->linesize[p],
+            .ptr = d->output->data[p]))) {
+            fprintf(stderr, "P010 plane download failed\n");
+            goto done;
+        }
+    }
     int size = av_image_get_buffer_size(AV_PIX_FMT_P010LE, frame->width, frame->height, 1);
     if (size < 0) { result = size; goto done; }
     av_fast_malloc(&d->buffer, &d->buffer_capacity, size);
