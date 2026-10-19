@@ -53,6 +53,12 @@ jobs:
           & ./artifacts/PlaybackProbe/Screenbox.PlaybackProbe.exe --self-test
           if ($LASTEXITCODE -ne 0) { throw "Managed native integration test failed" }
           7z a -t7z -mx=9 artifacts/screenbox-playback-probe.7z ./artifacts/PlaybackProbe/*.exe ./artifacts/PlaybackProbe/*.dll
+      - uses: actions/upload-artifact@v7
+        with:
+          name: screenbox-playback-probe.7z
+          path: artifacts/screenbox-playback-probe.7z
+          archive: false
+          retention-days: 7
       - name: Configure preview package identity
         run: |
           ./scripts/Update-AppxManifest.ps1 -Identity SideloadUnsigned
@@ -68,12 +74,39 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Screenbox build failed" }
       - uses: actions/upload-artifact@v7
         with:
-          name: screenbox-playback-probe.7z
-          path: artifacts/screenbox-playback-probe.7z
-          archive: false
-          retention-days: 7
-      - uses: actions/upload-artifact@v7
-        with:
           name: screenbox-hdr-internal-package
           path: Screenbox/AppPackages/**
+          retention-days: 7
+      - name: Prepare the installer payload
+        run: ./scripts/color-player/Export-Kit.ps1
+      - name: Install and launch the packaged app
+        run: |
+          $env:SCREENBOX_KIT_DIR = (Resolve-Path artifacts/hdr-payload).Path
+          & powershell.exe -NoLogo -NoProfile -NonInteractive -File scripts/color-player/InstallEngine.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Package installation failed" }
+          ./scripts/color-player/Test-PlayerStartup.ps1 -RequireReadyLog
+      - name: Build and check the graphical installer
+        run: |
+          ./scripts/color-player/Build-Setup.ps1 -SourceCommit $env:GITHUB_SHA
+          $setup = (Resolve-Path artifacts/ScreenboxHDR-Setup.exe).Path
+          $check = Start-Process -FilePath $setup -ArgumentList "--self-test" -PassThru -Wait -WindowStyle Hidden
+          if ($check.ExitCode -ne 0) { throw "Installer payload test failed" }
+          $preview = Join-Path $PWD "artifacts/ScreenboxHDR-Setup.png"
+          $render = Start-Process -FilePath $setup -ArgumentList @("--render", $preview) -PassThru -Wait -WindowStyle Hidden
+          if ($render.ExitCode -ne 0 -or -not (Test-Path -LiteralPath $preview)) { throw "Installer preview failed" }
+          Get-FileHash -LiteralPath $setup -Algorithm SHA256 | Format-List
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ScreenboxHDR-Setup.exe
+          path: artifacts/ScreenboxHDR-Setup.exe
+          archive: false
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: screenbox-hdr-startup-diagnostics
+          path: |
+            artifacts/startup-check/**
+            artifacts/ScreenboxHDR-Setup.png
+          if-no-files-found: ignore
           retention-days: 7
