@@ -15,7 +15,6 @@ namespace Screenbox.Core.Playback;
 /// Feeds corrected, timestamped P010 video and PCM audio into Windows' synchronized presentation.
 /// Each decoder owns an independent input cursor. All native operations are serialized.
 /// </summary>
-[WinRT.DynamicWindowsRuntimeCast(typeof(VideoStreamDescriptor))]
 internal sealed partial class ColorMediaSource : IDisposable
 {
     internal MediaSource Source { get; }
@@ -132,6 +131,7 @@ internal sealed partial class ColorMediaSource : IDisposable
         }
     }
 
+    [WinRT.DynamicWindowsRuntimeCast(typeof(VideoStreamDescriptor))]
     private async void OnSampleRequested(MediaStreamSource sender, MediaStreamSourceSampleRequestedEventArgs args)
     {
         var deferral = args.Request.GetDeferral();
