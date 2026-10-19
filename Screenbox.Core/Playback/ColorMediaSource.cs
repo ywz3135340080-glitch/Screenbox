@@ -26,6 +26,8 @@ internal sealed partial class ColorMediaSource : IDisposable
     private byte[] _videoBytes = [];
     private int _disposed;
     private bool _started;
+    // MFVideoTransFunc_2084 from mfobjects.h (SMPTE ST 2084 / PQ).
+    private const uint MediaFoundationPqTransferFunction = 15;
 
     private ColorMediaSource(ColorDecoder video, ColorDecoder? audio)
     {
@@ -39,7 +41,7 @@ internal sealed partial class ColorMediaSource : IDisposable
         properties.PixelAspectRatio.Numerator = 1;
         properties.PixelAspectRatio.Denominator = 1;
         // Describe the already-converted output, rather than relabeling the original IPT pixels.
-        properties.Properties[new Guid("5fb0fce9-be5c-4935-a811-ec838f8eed93")] = 16u;
+        properties.Properties[new Guid("5fb0fce9-be5c-4935-a811-ec838f8eed93")] = MediaFoundationPqTransferFunction;
         properties.Properties[new Guid("dbfbe4d7-0740-4ee0-8192-850ab0e21935")] = 9u;
         properties.Properties[new Guid("3e23d450-2c75-4d25-a00e-b91670d12327")] = 4u;
         properties.Properties[new Guid("c21b8ee5-b956-4071-8daf-325edf5cab11")] = 2u;

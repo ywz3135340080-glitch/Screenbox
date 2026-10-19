@@ -1,9 +1,34 @@
 using Screenbox.Core.Playback;
 using Windows.Media.Playback;
+using Windows.Media.Core;
+using Windows.Media.MediaProperties;
 using Windows.Storage;
 
 internal static class Program
 {
+    private static readonly TaskCompletionSource<VideoEncodingProperties> VideoDescription =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    [WinRT.DynamicWindowsRuntimeCast(typeof(VideoStreamDescriptor))]
+    private static void InspectRequestedVideo(MediaStreamSource sender, MediaStreamSourceSampleRequestedEventArgs args)
+    {
+        if (args.Request.StreamDescriptor is VideoStreamDescriptor video)
+            VideoDescription.TrySetResult(video.EncodingProperties);
+    }
+
+    private static async Task VerifyHdrDescriptionAsync()
+    {
+        VideoEncodingProperties video = await VideoDescription.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        uint transfer = Convert.ToUInt32(video.Properties[new Guid("5fb0fce9-be5c-4935-a811-ec838f8eed93")]);
+        uint primaries = Convert.ToUInt32(video.Properties[new Guid("dbfbe4d7-0740-4ee0-8192-850ab0e21935")]);
+        uint matrix = Convert.ToUInt32(video.Properties[new Guid("3e23d450-2c75-4d25-a00e-b91670d12327")]);
+        uint range = Convert.ToUInt32(video.Properties[new Guid("c21b8ee5-b956-4071-8daf-325edf5cab11")]);
+        Console.WriteLine($"Video tags at sample request: {video.Subtype}, transfer={transfer}, primaries={primaries}, matrix={matrix}, range={range}");
+        // These values are the Media Foundation HDR10 signal contract in mfobjects.h.
+        if (video.Subtype != "P010" || transfer != 15 || primaries != 9 || matrix != 4 || range != 2)
+            throw new IOException("The corrected PQ pixels are not described as limited-range BT.2020/PQ to Windows.");
+    }
+
     [MTAThread]
     private static int Main(string[] args)
     {
@@ -25,6 +50,7 @@ internal static class Program
         Console.WriteLine("Opening independent read-only inputs.");
         using ColorMediaSource source = await ColorMediaSource.CreateAsync(
             () => Task.FromResult<Stream>(File.OpenRead(args[0])));
+        source.Source.MediaStreamSource.SampleRequested += InspectRequestedVideo;
         Console.WriteLine("Corrected media source created; opening Windows presentation.");
         using var player = new MediaPlayer
         {
@@ -46,6 +72,7 @@ internal static class Program
         player.Source = source.Source;
         player.Play();
         await opened.Task.WaitAsync(TimeSpan.FromSeconds(40));
+        await VerifyHdrDescriptionAsync();
         Console.WriteLine($"Opened {player.PlaybackSession.NaturalVideoWidth}x{player.PlaybackSession.NaturalVideoHeight}; duration={player.PlaybackSession.NaturalDuration.TotalSeconds}");
         player.PlaybackSession.Position = TimeSpan.FromSeconds(600);
         await Task.Delay(3500);
