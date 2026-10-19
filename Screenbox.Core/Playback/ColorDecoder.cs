@@ -43,7 +43,12 @@ internal sealed partial class ColorDecoder : IDisposable
     /// <summary>Opens an independent StorageFile stream; null means the requested track is absent.</summary>
     internal static async Task<ColorDecoder?> OpenAsync(IStorageFile file, bool audio)
     {
-        Stream input = await file.OpenStreamForReadAsync().ConfigureAwait(false);
+        return Open(await file.OpenStreamForReadAsync().ConfigureAwait(false), audio);
+    }
+
+    /// <summary>Takes ownership of an already opened, independent seekable input.</summary>
+    internal static ColorDecoder? Open(Stream input, bool audio)
+    {
         ColorDecoder? owner = null;
         try
         {

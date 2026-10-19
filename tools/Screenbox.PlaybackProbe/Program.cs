@@ -22,8 +22,10 @@ internal static class Program
         }
 
         if (args.Length != 1) return 2;
-        StorageFile file = await StorageFile.GetFileFromPathAsync(args[0]);
-        using ColorMediaSource source = await ColorMediaSource.CreateAsync(file);
+        Console.WriteLine("Opening independent read-only inputs.");
+        using ColorMediaSource source = await ColorMediaSource.CreateAsync(
+            () => Task.FromResult<Stream>(File.OpenRead(args[0])));
+        Console.WriteLine("Corrected media source created; opening Windows presentation.");
         using var player = new MediaPlayer
         {
             AutoPlay = false, Volume = 0, IsVideoFrameServerEnabled = true,
@@ -40,6 +42,7 @@ internal static class Program
             opened.TrySetException(new IOException(failure));
         };
         player.VideoFrameAvailable += (_, _) => Interlocked.Increment(ref frames);
+        Console.WriteLine("Windows media player created; assigning source.");
         player.Source = source.Source;
         player.Play();
         await opened.Task.WaitAsync(TimeSpan.FromSeconds(40));

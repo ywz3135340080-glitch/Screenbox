@@ -73,16 +73,20 @@ internal sealed partial class ColorMediaSource : IDisposable
         Source = MediaSource.CreateFromMediaStreamSource(_stream);
     }
 
-    internal static async Task<ColorMediaSource> CreateAsync(IStorageFile file)
+    internal static Task<ColorMediaSource> CreateAsync(IStorageFile file) =>
+        CreateAsync(() => file.OpenStreamForReadAsync());
+
+    /// <summary>Uses independent read cursors, including in the unpackaged verification host.</summary>
+    internal static async Task<ColorMediaSource> CreateAsync(Func<Task<Stream>> openRead)
     {
         ColorDecoder? video = null;
         ColorDecoder? audio = null;
         try
         {
             // GPU creation and demuxing must not run on the XAML thread.
-            video = await Task.Run(() => ColorDecoder.OpenAsync(file, false)).ConfigureAwait(false)
+            video = await Task.Run(async () => ColorDecoder.Open(await openRead().ConfigureAwait(false), false)).ConfigureAwait(false)
                 ?? throw new IOException("The video stream is absent.");
-            audio = await Task.Run(() => ColorDecoder.OpenAsync(file, true)).ConfigureAwait(false);
+            audio = await Task.Run(async () => ColorDecoder.Open(await openRead().ConfigureAwait(false), true)).ConfigureAwait(false);
             return new ColorMediaSource(video, audio);
         }
         catch
