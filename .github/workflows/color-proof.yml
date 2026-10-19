@@ -1,0 +1,48 @@
+name: Native color proof
+on:
+  push:
+    branches: [codex/dolby-vision]
+    paths:
+      - scripts/color-proof/**
+      - .github/workflows/color-proof.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git make diffutils nasm
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-libplacebo
+      - name: Compile decoder and rendering proof
+        shell: msys2 {0}
+        run: bash scripts/color-proof/build.sh
+      - name: Verify offscreen D3D11 on a generated frame
+        shell: pwsh
+        run: |
+          Set-Location native-out
+          & .\color-probe.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "D3D11 proof self-test failed" }
+          $result = Get-Content result.json -Raw | ConvertFrom-Json
+          if ($result.width -ne 64 -or $result.height -ne 32) { throw "Invalid output size" }
+          if ((Get-Item corrected-sdr.rgba).Length -ne 8192) { throw "Missing SDR pixels" }
+          if ((Get-Item corrected-hdr.rgba64).Length -ne 16384) { throw "Missing HDR pixels" }
+          Remove-Item corrected-sdr.rgba,corrected-hdr.rgba64,result.json
+      - name: Package internal proof
+        shell: pwsh
+        run: 7z a -t7z -mx=9 color-proof-x64.7z .\native-out\*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: color-proof-x64.7z
+          path: color-proof-x64.7z
+          archive: false
+          retention-days: 7
