@@ -36,6 +36,13 @@ jobs:
           Copy-Item -LiteralPath $payload.FullName -Destination artifacts/ScreenboxMpvPreview-x64.zip
       - name: Verify installed and missing frameworks
         run: ./scripts/mpv-preview/Test-SetupEngine.ps1 -Payload artifacts/ScreenboxMpvPreview-x64.zip
+      - name: Install and launch the packaged player
+        run: |
+          Expand-Archive -LiteralPath artifacts/ScreenboxMpvPreview-x64.zip -DestinationPath artifacts/startup-payload
+          $env:SCREENBOX_KIT_DIR = (Resolve-Path artifacts/startup-payload).Path
+          & powershell.exe -NoLogo -NoProfile -NonInteractive -File scripts/mpv-preview/InstallEngine.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Player deployment failed." }
+          ./scripts/mpv-preview/Test-PlayerStartup.ps1
       - name: Compile graphical installer
         run: ./scripts/mpv-preview/Build-Setup.ps1 -SourceCommit $env:GITHUB_SHA
       - name: Verify embedded player and render interface
@@ -60,5 +67,6 @@ jobs:
           path: |
             artifacts/setup-preview.png
             setup-selftest.txt
+            artifacts/startup-check/**
           if-no-files-found: ignore
           retention-days: 7
