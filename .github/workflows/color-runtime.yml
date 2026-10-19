@@ -1,0 +1,47 @@
+name: Native playback component
+on:
+  push:
+    branches: [codex/dolby-vision]
+    paths:
+      - native/color/**
+      - .github/workflows/color-runtime.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git make diffutils nasm
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-libplacebo
+      - uses: actions/cache@v4
+        with:
+          path: color-runtime-prefix
+          key: color-runtime-8dba372-gcc15-v1
+      - name: Build native decoder and color renderer
+        shell: msys2 {0}
+        run: bash native/color/build.sh
+      - name: Validate the exported ABI and P010 pixels
+        shell: pwsh
+        run: |
+          Set-Location color-runtime
+          python -c "import ctypes, pathlib; d=ctypes.CDLL(str(pathlib.Path('Screenbox.NativeColor.dll').resolve())); assert d.sb_abi_version()==1; status=d.sb_self_test(); print('P010 self test:',status); assert status==0"
+          if ($LASTEXITCODE -ne 0) { throw "Native component self-test failed" }
+      - name: Compress native runtime
+        shell: pwsh
+        run: 7z a -t7z -mx=9 screenbox-color-runtime-x64.7z .\color-runtime\*
+      - uses: actions/upload-artifact@v7
+        with:
+          name: screenbox-color-runtime-x64.7z
+          path: screenbox-color-runtime-x64.7z
+          archive: false
+          retention-days: 14
