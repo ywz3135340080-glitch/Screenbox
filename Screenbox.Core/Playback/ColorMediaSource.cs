@@ -108,15 +108,24 @@ internal sealed partial class ColorMediaSource : IDisposable
                 try
                 {
                     if (Volatile.Read(ref _disposed) != 0) return;
-                    TimeSpan position = args.Request.StartPosition ?? TimeSpan.Zero;
-                    if (_started || position > TimeSpan.Zero)
+                    // A null start position means continuation, including resume after pause.
+                    // Rewinding in that case feeds old timestamps into the current media clock.
+                    if (args.Request.StartPosition is { } position)
                     {
-                        _video.Seek(position);
-                        _audio?.Seek(position);
+                        if (_started || position > TimeSpan.Zero)
+                        {
+                            _video.Seek(position);
+                            _audio?.Seek(position);
+                        }
+
+                        args.Request.SetActualStartPosition(position);
+                    }
+                    else if (!_started)
+                    {
+                        args.Request.SetActualStartPosition(TimeSpan.Zero);
                     }
 
                     _started = true;
-                    args.Request.SetActualStartPosition(position);
                 }
                 finally
                 {

@@ -60,9 +60,16 @@ internal static class Program
         if (Math.Abs(player.PlaybackSession.Position.TotalSeconds - paused) > 0.2)
             throw new IOException("Pause did not hold the media clock.");
         player.Play();
-        await Task.Delay(1200);
+        DateTime resumeDeadline = DateTime.UtcNow.AddSeconds(8);
+        while (player.PlaybackSession.Position.TotalSeconds < paused + 0.5 &&
+               DateTime.UtcNow < resumeDeadline)
+        {
+            if (failure is not null) throw new IOException(failure);
+            await Task.Delay(100);
+        }
+        Console.WriteLine($"Resumed: paused at={paused:F3}, now={player.PlaybackSession.Position.TotalSeconds:F3}, state={player.PlaybackSession.PlaybackState}");
         if (player.PlaybackSession.Position.TotalSeconds < paused + 0.5)
-            throw new IOException("Playback did not resume.");
+            throw new IOException("Playback did not resume within eight seconds.");
         player.PlaybackSession.Position = TimeSpan.FromSeconds(1200);
         await Task.Delay(2500);
         double seeked = player.PlaybackSession.Position.TotalSeconds;

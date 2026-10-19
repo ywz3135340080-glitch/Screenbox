@@ -1,0 +1,48 @@
+name: Color playback verification host
+on:
+  push:
+    branches: [codex/dolby-vision]
+    paths:
+      - Screenbox.Core/Playback/ColorDecoder.cs
+      - Screenbox.Core/Playback/ColorMediaSource.cs
+      - tools/Screenbox.PlaybackProbe/**
+      - .github/workflows/color-playback-check.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: screenbox-color-playback-probe
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - name: Publish the verification host
+        run: |
+          $vswhere = Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Microsoft Visual Studio\Installer\vswhere.exe"
+          $buildTool = & $vswhere -version "[18.0,19.0)" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $buildTool) { throw "Visual Studio 2026 is required" }
+          & $buildTool tools/Screenbox.PlaybackProbe/Screenbox.PlaybackProbe.csproj -restore -t:Publish -m -v:minimal -p:Configuration=Release -p:Platform=x64 "-p:PublishDir=$env:GITHUB_WORKSPACE/artifacts/PlaybackProbe/"
+          if ($LASTEXITCODE -ne 0) { throw "Playback probe build failed" }
+      - name: Retrieve the matching native component
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/color-player/Get-NativeRuntime.ps1 -Commit $env:GITHUB_SHA
+      - name: Verify the ABI and archive the host
+        run: |
+          Copy-Item Screenbox/NativeColor/*.dll artifacts/PlaybackProbe/
+          & ./artifacts/PlaybackProbe/Screenbox.PlaybackProbe.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Managed native integration test failed" }
+          7z a -t7z -mx=9 artifacts/screenbox-playback-probe.7z ./artifacts/PlaybackProbe/*.exe ./artifacts/PlaybackProbe/*.dll
+      - uses: actions/upload-artifact@v7
+        with:
+          name: screenbox-playback-probe.7z
+          path: artifacts/screenbox-playback-probe.7z
+          archive: false
+          retention-days: 7
