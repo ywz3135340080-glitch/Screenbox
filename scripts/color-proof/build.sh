@@ -3,20 +3,23 @@ set -euo pipefail
 root="$PWD"
 prefix="$PWD/native-prefix"
 mkdir -p "$prefix" native-out
-git init ffmpeg-src
-git -C ffmpeg-src remote add origin https://github.com/FFmpeg/FFmpeg.git
-git -C ffmpeg-src fetch --depth 1 origin 8dba37253f985bcba0b9dd26adb94a7593124796
-git -C ffmpeg-src checkout --detach FETCH_HEAD
-cd ffmpeg-src
-./configure --prefix="$prefix" --disable-autodetect --disable-everything \
-  --disable-programs --disable-doc --disable-debug --disable-network \
-  --disable-avdevice --disable-avfilter --disable-swresample --disable-swscale \
-  --enable-static --disable-shared --enable-avcodec --enable-avformat --enable-avutil \
-  --enable-decoder=hevc,aac --enable-parser=hevc,aac \
-  --enable-demuxer=mov --enable-protocol=file --enable-small \
-  --extra-cflags="-O2" --extra-ldflags="-static-libgcc"
-make -j4
-make install
+if [[ ! -f "$prefix/lib/libavcodec.a" ]]; then
+  git init ffmpeg-src
+  git -C ffmpeg-src remote add origin https://github.com/FFmpeg/FFmpeg.git
+  git -C ffmpeg-src fetch --depth 1 origin 8dba37253f985bcba0b9dd26adb94a7593124796
+  git -C ffmpeg-src checkout --detach FETCH_HEAD
+  cd ffmpeg-src
+  ./configure --prefix="$prefix" --disable-autodetect --disable-everything \
+    --disable-programs --disable-doc --disable-debug --disable-network \
+    --disable-avdevice --disable-avfilter --disable-swresample --disable-swscale \
+    --enable-static --disable-shared --enable-avcodec --enable-avformat --enable-avutil \
+    --enable-decoder=hevc,aac --enable-parser=hevc,aac \
+    --enable-demuxer=mov --enable-protocol=file --enable-small \
+    --extra-cflags="-O2" --extra-ldflags="-static-libgcc"
+  make -j4
+  make install
+  
+fi
 cd "$root"
 export PKG_CONFIG_PATH="$prefix/lib/pkgconfig:/ucrt64/lib/pkgconfig"
 gcc -std=c11 -O2 -Wall -Wextra -Wno-unused-function -municode \
@@ -35,7 +38,11 @@ for pass in 1 2 3 4 5 6 7 8; do
   done
 done
 mkdir -p native-out/licenses
-cp ffmpeg-src/COPYING.LGPLv2.1 native-out/licenses/FFmpeg-LGPL-2.1.txt
+if [[ -f ffmpeg-src/COPYING.LGPLv2.1 ]]; then
+  cp ffmpeg-src/COPYING.LGPLv2.1 native-out/licenses/FFmpeg-LGPL-2.1.txt
+else
+  curl --fail --location https://raw.githubusercontent.com/FFmpeg/FFmpeg/8dba37253f985bcba0b9dd26adb94a7593124796/COPYING.LGPLv2.1 -o native-out/licenses/FFmpeg-LGPL-2.1.txt
+fi
 for pkg in libplacebo libdovi shaderc spirv-cross lcms2 vulkan-loader gcc-libs; do
   path="/ucrt64/share/licenses/$pkg"
   [[ ! -d "$path" ]] || cp -r "$path" "native-out/licenses/$pkg"
