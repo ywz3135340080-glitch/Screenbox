@@ -1,6 +1,7 @@
 #define COBJMACROS
 #include <windows.h>
 #include <errno.h>
+#include <stdio.h>
 #include <limits.h>
 #include <string.h>
 #include "screenbox-color.h"
@@ -321,8 +322,10 @@ int sb_self_test(void)
             for (int x = 0; x < (p ? 32 : 64); ++x) row[x] = 512;
         }
     result = convert_video(d, 0);
+    fprintf(stderr, "P010 self-test bytes: %d (expected 6144)\n", result);
     if (result != 6144) { result = AVERROR_INVALIDDATA; goto done; }
     uint16_t *pixels = (uint16_t *)d->buffer;
+    fprintf(stderr, "P010 self-test Y/U/V: %u/%u/%u\n", pixels[0], pixels[2048], pixels[2049]);
     if (pixels[0] < (64 << 6) || pixels[0] >= (940 << 6) ||
         abs((int)pixels[2048] - 32768) > 128 ||
         abs((int)pixels[2049] - 32768) > 128) result = AVERROR_INVALIDDATA;

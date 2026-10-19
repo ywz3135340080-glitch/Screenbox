@@ -30,6 +30,10 @@ jobs:
       - name: Build native decoder and color renderer
         shell: msys2 {0}
         run: bash native/color/build.sh
+      - uses: actions/cache/save@v4
+        with:
+          path: color-runtime-prefix
+          key: color-runtime-8dba372-gcc15-v1
       - name: Validate the exported ABI and P010 pixels
         shell: pwsh
         run: |
