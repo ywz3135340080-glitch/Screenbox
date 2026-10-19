@@ -162,7 +162,7 @@ internal sealed partial class ColorMediaSource : IDisposable
                     }
 
                     Marshal.Copy(sample.Data, bytes, 0, sample.Length);
-                    CryptographicBuffer.CreateFromByteArray(bytes, out IBuffer buffer);
+                    IBuffer buffer = CryptographicBuffer.CreateFromByteArray(bytes);
                     long timestamp = sample.TimestampTicks + (video ? 0 : AudioOffset.Ticks);
                     var output = MediaStreamSample.CreateFromBuffer(buffer, TimeSpan.FromTicks(Math.Max(0, timestamp)));
                     output.Duration = TimeSpan.FromTicks(sample.DurationTicks);
