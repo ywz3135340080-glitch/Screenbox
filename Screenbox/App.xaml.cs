@@ -84,6 +84,7 @@ sealed partial class App : Application
         }
         catch (Exception ex)
         {
+            ColorStartupCheck.RecordFailure(ex, "CoreApplication.UnhandledErrorDetected");
             // Tell Sentry this was an unhandled exception
             ex.Data[Mechanism.HandledKey] = false;
             ex.Data[Mechanism.MechanismKey] = "CoreApplication.UnhandledErrorDetected";
@@ -112,6 +113,7 @@ sealed partial class App : Application
         var exception = e.Exception;
         if (exception != null)
         {
+            ColorStartupCheck.RecordFailure(exception, "Application.UnhandledException");
             // Tell Sentry this was an unhandled exception
             exception.Data[Mechanism.HandledKey] = false;
             exception.Data[Mechanism.MechanismKey] = "Application.UnhandledException";

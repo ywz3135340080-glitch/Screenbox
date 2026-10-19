@@ -14,12 +14,15 @@ namespace Screenbox.Core.Playback;
 
 public sealed partial class VlcMediaPlayer
 {
-    /// <summary>Raised when the Windows presentation surface must attach or detach.</summary>
-    public event EventHandler? ColorPlayerChanged;
+    /// <summary>Raised when the Windows presentation surface must attach or detach.
+    /// Handlers complete after the UI has updated its player reference.</summary>
+    public event Func<Task>? ColorPlayerChanged;
 
     /// <summary>Gets the Windows player presenting corrected P010 video.</summary>
     public NativeMediaPlayer? ColorPlayer => _colorPlayer;
 
+    private readonly object _colorLifetimeLock = new();
+    private Task _colorReleaseTask = Task.CompletedTask;
     private NativeMediaPlayer? _colorPlayer;
     private ColorMediaSource? _colorSource;
     private bool _routingPlayback;
@@ -37,26 +40,62 @@ public sealed partial class VlcMediaPlayer
 
     private void ResetColorPlayback()
     {
-        Interlocked.Increment(ref _colorGeneration);
-        _routingPlayback = false;
-        NativeMediaPlayer? player = _colorPlayer;
-        ColorMediaSource? source = _colorSource;
-        _colorPlayer = null;
-        _colorSource = null;
-        if (player is not null)
+        lock (_colorLifetimeLock)
         {
-            player.Pause();
-            player.Source = null;
-            player.Dispose();
+            Interlocked.Increment(ref _colorGeneration);
+            _routingPlayback = false;
+            NativeMediaPlayer? player = _colorPlayer;
+            ColorMediaSource? source = _colorSource;
+            _colorPlayer = null;
+            _colorSource = null;
+            _colorPlaybackItem = null;
+            IRandomAccessStream[] subtitles = _colorSubtitleStreams.ToArray();
+            _colorSubtitleStreams.Clear();
+            _colorSubtitles.Clear();
+            _selectedColorSubtitle = null;
+            if (player is not null || source is not null || subtitles.Length > 0)
+            {
+                _colorReleaseTask = RetireColorPlaybackAsync(_colorReleaseTask, player, source, subtitles);
+            }
         }
+    }
 
-        source?.Dispose();
-        _colorPlaybackItem = null;
-        foreach (var stream in _colorSubtitleStreams) stream.Dispose();
-        _colorSubtitleStreams.Clear();
-        _colorSubtitles.Clear();
-        _selectedColorSubtitle = null;
-        ColorPlayerChanged?.Invoke(this, EventArgs.Empty);
+    private async Task RetireColorPlaybackAsync(Task previous, NativeMediaPlayer? player,
+        ColorMediaSource? source, IRandomAccessStream[] subtitles)
+    {
+        try
+        {
+            await PlaybackSurfaceLifetime.ReleaseAsync(previous, NotifyColorPlayerChangedAsync, () =>
+            {
+                try
+                {
+                    if (player is not null)
+                    {
+                        try { player.Pause(); }
+                        finally
+                        {
+                            try { player.Source = null; }
+                            finally { player.Dispose(); }
+                        }
+                    }
+                }
+                finally
+                {
+                    source?.Dispose();
+                    foreach (IRandomAccessStream stream in subtitles) stream.Dispose();
+                }
+            }).ConfigureAwait(false);
+        }
+        catch (Exception error) { LogColorFailure(error); }
+    }
+
+    private async Task NotifyColorPlayerChangedAsync()
+    {
+        if (ColorPlayerChanged is not { } handlers) return;
+        foreach (Func<Task> handler in handlers.GetInvocationList())
+        {
+            await handler().ConfigureAwait(false);
+        }
     }
 
     [WinRT.DynamicWindowsRuntimeCast(typeof(StorageFile))]
@@ -66,6 +105,9 @@ public sealed partial class VlcMediaPlayer
         _routingPlayback = true;
         try
         {
+            // A new output must wait until the old UI surface has detached and released its player.
+            await _colorReleaseTask.ConfigureAwait(false);
+            if (_closed || generation != Volatile.Read(ref _colorGeneration) || PlaybackItem != item) return;
             IStorageFile? file = item.OriginalSource as IStorageFile;
             DolbyVisionConfiguration? configuration = null;
             if (file is not null)
@@ -155,14 +197,25 @@ public sealed partial class VlcMediaPlayer
                     new ValueChangedEventArgs<double>(session.PlaybackRate, session.PlaybackRate));
             };
 
-            source.AudioOffset = TimeSpan.FromMilliseconds(AudioDelay);
-            _colorSource = source;
-            _colorPlayer = player;
-            _routingPlayback = false;
-            _colorPlaybackItem = new Windows.Media.Playback.MediaPlaybackItem(source.Source);
-            _colorPlaybackItem.TimedMetadataTracksChanged += (_, _) => SelectColorSubtitle(_selectedColorSubtitle);
-            player.Source = _colorPlaybackItem;
-            ColorPlayerChanged?.Invoke(this, EventArgs.Empty);
+            lock (_colorLifetimeLock)
+            {
+                if (_closed || generation != Volatile.Read(ref _colorGeneration) || PlaybackItem != item)
+                {
+                    player.Dispose();
+                    source.Dispose();
+                    return;
+                }
+
+                source.AudioOffset = TimeSpan.FromMilliseconds(AudioDelay);
+                _colorSource = source;
+                _colorPlayer = player;
+                _routingPlayback = false;
+                _colorPlaybackItem = new Windows.Media.Playback.MediaPlaybackItem(source.Source);
+                _colorPlaybackItem.TimedMetadataTracksChanged += (_, _) => SelectColorSubtitle(_selectedColorSubtitle);
+                player.Source = _colorPlaybackItem;
+            }
+            await NotifyColorPlayerChangedAsync().ConfigureAwait(false);
+            if (_closed || generation != Volatile.Read(ref _colorGeneration) || !ReferenceEquals(_colorPlayer, player)) return;
             if (_wantColorPlay) player.Play();
 
             // Metadata collections can continue to use the existing LibVLC parser.

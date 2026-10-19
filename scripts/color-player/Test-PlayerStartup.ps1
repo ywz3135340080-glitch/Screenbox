@@ -36,7 +36,7 @@ try {
     $playerProcessId = [PreviewActivation]::Launch($appId)
     "Activated $appId as PID $playerProcessId"
     $process = Get-Process -Id $playerProcessId
-    if ($process.WaitForExit(15000)) { throw "The app exited during startup: $($process.ExitCode)." }
+    if ($process.WaitForExit(30000)) { throw "The app exited during startup: $($process.ExitCode)." }
     if ($RequireReadyLog) {
         $readyPath = Join-Path $env:LOCALAPPDATA ("Packages/" + $package.PackageFamilyName + "/LocalState/startup.log")
         if (-not (Test-Path -LiteralPath $readyPath) -or
@@ -52,13 +52,20 @@ try {
         if (Test-Path -LiteralPath $nativeLog) { Get-Content -LiteralPath $nativeLog }
         throw 'The native color component did not pass its check inside the installed UWP app.'
     }
-    'PASS: the installed player stayed running for 15 seconds and its native color component rendered P010 successfully.'
+    $surfaceLog = Join-Path $state 'color-surface-test.log'
+    if (-not (Test-Path -LiteralPath $surfaceLog) -or
+        (Get-Item -LiteralPath $surfaceLog).LastWriteTime -lt $started -or
+        (Get-Content -LiteralPath $surfaceLog -Raw).Trim() -ne 'Playback surface check: 8 transitions') {
+        if (Test-Path -LiteralPath $surfaceLog) { Get-Content -LiteralPath $surfaceLog }
+        throw 'The installed player failed its repeated P010 presentation surface check.'
+    }
+    'PASS: the installed player stayed running for 30 seconds and its native color component rendered P010 successfully.'
 } finally {
     $diagnostics = Join-Path $PWD 'artifacts/startup-check'
     $null = New-Item -ItemType Directory -Path $diagnostics -Force
     $state = Join-Path $env:LOCALAPPDATA ("Packages/" + $package.PackageFamilyName + "/LocalState")
     if (Test-Path -LiteralPath $state) {
-        Get-ChildItem -LiteralPath $state -File | Where-Object { $_.Name -match 'startup|color-self-test' } | Copy-Item -Destination $diagnostics
+        Get-ChildItem -LiteralPath $state -File | Where-Object { $_.Name -match 'startup|color-self-test|color-surface-test|crash' } | Copy-Item -Destination $diagnostics
     }
     foreach ($logName in @('Application','Microsoft-Windows-TWinUI/Operational')) {
         try {
