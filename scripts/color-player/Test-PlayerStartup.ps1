@@ -59,13 +59,19 @@ try {
         if (Test-Path -LiteralPath $surfaceLog) { Get-Content -LiteralPath $surfaceLog }
         throw 'The installed player failed its repeated P010 presentation surface check.'
     }
+    $subtitleLog = Join-Path $state 'subtitle-panel.log'
+    if (-not (Test-Path -LiteralPath $subtitleLog) -or
+        (Get-Content -LiteralPath $subtitleLog -Raw).Trim() -ne 'Subtitle panel check: positive, negative and reset passed') {
+        if (Test-Path -LiteralPath $subtitleLog) { Get-Content -LiteralPath $subtitleLog }
+        throw 'The installed subtitle offset controls failed their binding check.'
+    }
     'PASS: the installed player stayed running for 30 seconds and its native color component rendered P010 successfully.'
 } finally {
     $diagnostics = Join-Path $PWD 'artifacts/startup-check'
     $null = New-Item -ItemType Directory -Path $diagnostics -Force
     $state = Join-Path $env:LOCALAPPDATA ("Packages/" + $package.PackageFamilyName + "/LocalState")
     if (Test-Path -LiteralPath $state) {
-        Get-ChildItem -LiteralPath $state -File | Where-Object { $_.Name -match 'startup|color-self-test|color-surface-test|crash' } | Copy-Item -Destination $diagnostics
+        Get-ChildItem -LiteralPath $state -File | Where-Object { $_.Name -match 'startup|color-self-test|color-surface-test|subtitle-panel|crash' } | Copy-Item -Destination $diagnostics
     }
     foreach ($logName in @('Application','Microsoft-Windows-TWinUI/Operational')) {
         try {

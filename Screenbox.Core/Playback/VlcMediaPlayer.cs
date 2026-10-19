@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using LibVLCSharp.Shared;
 using Screenbox.Core.Events;
 using Windows.Devices.Enumeration;
@@ -152,15 +153,15 @@ public sealed partial class VlcMediaPlayer : IMediaPlayer
     /// <value>A <see cref="double"/> representing the subtitle offset in milliseconds.</value>
     public double SubtitleDelay
     {
-        get => ConvertMicrosecondsToMilliseconds(VlcPlayer.SpuDelay);
+        get => Volatile.Read(ref _subtitleDelay);
         set
         {
-            double oldValue = ConvertMicrosecondsToMilliseconds(VlcPlayer.SpuDelay);
-            if (Math.Abs(oldValue - value) > 0.0001)
-            {
-                VlcPlayer.SetSpuDelay(ConvertMillisecondsToMicroseconds(value));
-                SubtitleDelayChanged?.Invoke(this, new ValueChangedEventArgs<double>(value, oldValue));
-            }
+            double valid = double.IsFinite(value) ? Math.Clamp(value, -600_000, 600_000) : 0;
+            double oldValue = Interlocked.Exchange(ref _subtitleDelay, valid);
+            if (Math.Abs(oldValue - valid) < 0.0001) return;
+            if (_colorPlayer is null && !_routingPlayback) ApplyNativeSubtitleDelay();
+            EnsureSubtitleTimer();
+            SubtitleDelayChanged?.Invoke(this, new ValueChangedEventArgs<double>(valid, oldValue));
         }
     }
 
@@ -270,6 +271,7 @@ public sealed partial class VlcMediaPlayer : IMediaPlayer
         set
         {
             if (_playbackItem == value) return;
+            if (_playbackItem is not null) RemoveItemHandlers(_playbackItem);
             ResetColorPlayback();
             PlaybackItem? oldValue = _playbackItem;
             if (value == null)
@@ -417,6 +419,7 @@ public sealed partial class VlcMediaPlayer : IMediaPlayer
     {
         if (UsingColorPlayback) return;
         PlaybackState = MediaPlaybackState.Playing;
+        ApplyNativeSubtitleDelay();
         if (!_updateMediaProperties) return;
         _updateMediaProperties = false;
 
@@ -497,34 +500,41 @@ public sealed partial class VlcMediaPlayer : IMediaPlayer
     private void SubtitleTracksOnSelectedIndexChanged(ISingleSelectMediaTrackList sender, object? args)
     {
         PlaybackSubtitleTrackList trackList = (PlaybackSubtitleTrackList)sender;
+        SubtitleTrack? selected = sender.SelectedIndex >= 0 ? trackList[sender.SelectedIndex] : null;
+        IStorageFile? file = selected?.ExternalFile;
+        bool text = file is not null && SubtitleDocument.Supports(file.FileType);
+        SelectExternalTextSubtitle(file);
         if (_colorPlayer is not null)
         {
-            _selectedColorSubtitle = sender.SelectedIndex >= 0 ? trackList[sender.SelectedIndex].Label : null;
+            _selectedColorSubtitle = text ? null : selected?.Label;
             SelectColorSubtitle(_selectedColorSubtitle);
             return;
         }
-        if (sender.SelectedIndex < 0) VlcPlayer.SetSpu(-1);
-        else if (trackList[sender.SelectedIndex].VlcSpu >= 0)   // VlcSpu < 0 on lazy load
-            VlcPlayer.SetSpu(trackList[sender.SelectedIndex].VlcSpu);
+
+        int index = sender.SelectedIndex;
+        int spu = text || selected is null ? -1 : selected.VlcSpu;
+        int generation = Volatile.Read(ref _colorGeneration);
+        if (spu < 0 && !text && selected is not null) return;
+        _ = Task.Run(() =>
+        {
+            lock (_nativeSubtitleLock)
+            {
+                if (!_closed && generation == Volatile.Read(ref _colorGeneration) && sender.SelectedIndex == index)
+                    VlcPlayer.SetSpu(spu);
+            }
+        });
     }
 
     public void AddSubtitle(IStorageFile file, bool select = true)
     {
-        if (PlaybackItem == null) return;
-        if (_colorPlayer is not null)
-        {
-            _ = AddColorSubtitleAsync(file, select);
-            return;
-        }
-        string mrl = "winrt://" + StorageApplicationPermissions.FutureAccessList.Add(file, "subtitle");
-        VlcPlayer.AddSlave(MediaSlaveType.Subtitle, mrl, select);
+        _ = ObserveSubtitleLoadAsync(file, select);
     }
 
     public void Close()
     {
         _closed = true;
         ResetColorPlayback();
-        VlcPlayer.Dispose();
+        lock (_nativeSubtitleLock) VlcPlayer.Dispose();
     }
 
     public void Pause()

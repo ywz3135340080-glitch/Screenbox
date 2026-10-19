@@ -1,3 +1,4 @@
+using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using CommunityToolkit.Mvvm.Messaging;
@@ -98,6 +99,13 @@ public sealed partial class PlaybackSessionViewModel : ObservableRecipient,
 
     partial void OnSubtitleTimingOffsetChanged(double value)
     {
+        double valid = double.IsFinite(value) ? Math.Clamp(value, -600_000, 600_000) : 0;
+        if (value != valid)
+        {
+            SubtitleTimingOffset = valid;
+            return;
+        }
+
         if (MediaPlayer is null)
             return;
 
@@ -119,6 +127,13 @@ public sealed partial class PlaybackSessionViewModel : ObservableRecipient,
         {
             sender.PlaybackRate = PlaybackRate;
         });
+    }
+
+    /// <summary>Resets subtitle synchronization without changing audio timing.</summary>
+    [RelayCommand]
+    private void ResetSubtitleTimingOffset()
+    {
+        SubtitleTimingOffset = 0;
     }
 
     private void ResetTimingOffsets()

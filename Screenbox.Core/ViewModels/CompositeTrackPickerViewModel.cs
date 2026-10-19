@@ -290,7 +290,12 @@ public sealed partial class CompositeTrackPickerViewModel : ObservableRecipient,
             StorageFile? file = await _filesService.PickFileAsync(FilesHelpers.SupportedSubtitleFormats.Add("*").ToArray());
             if (file == null) return;
 
-            ItemSubtitleTrackList.AddExternalSubtitle(player, file, true);
+            PlaybackSubtitleTrackList tracks = ItemSubtitleTrackList;
+            tracks.AddExternalSubtitle(player, file, true);
+            UpdateSubtitleTrackList();
+            SubtitleTrackIndex = tracks.SelectedIndex + 1;
+            await player.LoadSubtitleAsync(file);
+            if (MediaPlayer != player || ItemSubtitleTrackList != tracks) return;
             Messenger.Send(new NotificationMessage(NotificationLevel.Success, NotificationKind.SubtitleAdded, message: file.Name));
         }
         catch (Exception e)

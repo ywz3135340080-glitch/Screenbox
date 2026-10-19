@@ -47,6 +47,15 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
     /// <summary>Gets the presentation player for corrected Dolby Vision video.</summary>
     public Windows.Media.Playback.MediaPlayer? ColorPlayer => VlcMediaPlayer?.ColorPlayer;
 
+    /// <summary>Gets the independently timed external caption.</summary>
+    public string SubtitleText => VlcMediaPlayer?.SubtitleText ?? string.Empty;
+
+    /// <summary>Gets whether an external text caption is currently active.</summary>
+    public bool HasSubtitleText => !string.IsNullOrEmpty(SubtitleText);
+
+    /// <summary>Gets the subtitle font size appropriate for the current video surface.</summary>
+    [ObservableProperty] public partial double SubtitleFontSize { get; set; } = 24;
+
     private VlcMediaPlayer? VlcMediaPlayer
     {
         get => _playerContext.MediaPlayer as VlcMediaPlayer;
@@ -124,6 +133,7 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
         VlcMediaPlayer? oldPlayer = VlcMediaPlayer;
         if (oldPlayer != null)
         {
+            oldPlayer.SubtitleTextChanged -= OnSubtitleTextChanged;
             oldPlayer.ColorPlayerChanged -= OnColorPlayerChangedAsync;
             oldPlayer.PlaybackStateChanged -= OnPlaybackStateChanged;
             oldPlayer.PositionChanged -= OnPositionChanged;
@@ -131,6 +141,7 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
             oldPlayer.PlaybackItemChanged -= OnPlaybackItemChanged;
             VlcMediaPlayer = null;
             OnPropertyChanged(nameof(ColorPlayer));
+            OnSubtitleTextChanged(this, EventArgs.Empty);
         }
 
         // Cancel any in-progress initialization so that a stale Task cannot
@@ -196,6 +207,7 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
                 }
 
                 VlcMediaPlayer = vlcMediaPlayer;
+                vlcMediaPlayer.SubtitleTextChanged += OnSubtitleTextChanged;
                 vlcMediaPlayer.ColorPlayerChanged += OnColorPlayerChangedAsync;
                 player.PlaybackStateChanged += OnPlaybackStateChanged;
                 player.PositionChanged += OnPositionChanged;
@@ -214,6 +226,15 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
         });
     }
 
+    private void OnSubtitleTextChanged(object? sender, EventArgs args)
+    {
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            OnPropertyChanged(nameof(SubtitleText));
+            OnPropertyChanged(nameof(HasSubtitleText));
+        });
+    }
+
     private Task OnColorPlayerChangedAsync()
     {
         return _dispatcherQueue.EnqueueAsync(() => OnPropertyChanged(nameof(ColorPlayer)));
@@ -222,6 +243,7 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
     public void UpdatePlayerViewSize(Size size)
     {
         _viewSize = size;
+        SubtitleFontSize = Math.Clamp(size.Height * 0.038, 16, 64);
         SetCropGeometry(_aspectRatio);
 
         try

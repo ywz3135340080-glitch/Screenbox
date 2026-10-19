@@ -21,6 +21,8 @@ public sealed partial class CompositeTrackPicker : UserControl
     public const double TimingOffsetMax = 3000d;
     public const double TimingOffsetMin = -3000d;
     public const double TimingOffsetStep = 50d;
+    public const double SubtitleTimingOffsetMax = 600_000d;
+    public const double SubtitleTimingOffsetMin = -600_000d;
 
     /// <summary>
     /// View-level subtitle track list that prepends a localized "Disable" entry to
@@ -65,7 +67,7 @@ public sealed partial class CompositeTrackPicker : UserControl
 
     private void AddSubtitleListViewFooterItem_OnTapped(object sender, TappedRoutedEventArgs e)
     {
-        ViewModel.AddSubtitleCommand.Execute(null);
+        if (ViewModel.AddSubtitleCommand.CanExecute(null)) ViewModel.AddSubtitleCommand.Execute(null);
         e.Handled = true;
     }
 
@@ -74,7 +76,7 @@ public sealed partial class CompositeTrackPicker : UserControl
         if (e.Key is not (VirtualKey.Enter or VirtualKey.Space or VirtualKey.GamepadA))
             return;
 
-        ViewModel.AddSubtitleCommand.Execute(null);
+        if (ViewModel.AddSubtitleCommand.CanExecute(null)) ViewModel.AddSubtitleCommand.Execute(null);
         e.Handled = true;
     }
 
@@ -139,7 +141,9 @@ public sealed partial class CompositeTrackPicker : UserControl
         double currentValue = isAudio
             ? PlaybackSession.AudioTimingOffset
             : PlaybackSession.SubtitleTimingOffset;
-        double newValue = Math.Clamp(currentValue + delta, TimingOffsetMin, TimingOffsetMax);
+        double newValue = Math.Clamp(currentValue + delta,
+            isAudio ? TimingOffsetMin : SubtitleTimingOffsetMin,
+            isAudio ? TimingOffsetMax : SubtitleTimingOffsetMax);
 
         if (isAudio)
         {

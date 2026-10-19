@@ -4,6 +4,7 @@ on:
     branches: [codex/dolby-vision]
     paths:
       - Screenbox/Controls/PlayerElement.xaml
+      - Screenbox/Controls/CompositeTrackPicker.xaml
       - .github/workflows/color-format-check.yml
   workflow_dispatch:
 permissions:

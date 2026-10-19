@@ -29,6 +29,7 @@ public sealed partial class PlaybackSubtitleTrackList : SingleSelectTrackList<Su
                 Id = "-1",
                 VlcSpu = -1,
                 Label = file.Name,
+                ExternalFile = file,
             };
         }
     }

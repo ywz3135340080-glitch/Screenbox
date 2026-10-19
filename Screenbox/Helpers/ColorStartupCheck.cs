@@ -1,5 +1,12 @@
 using System;
 using System.IO;
+using System.Text;
+using System.Runtime.InteropServices.WindowsRuntime;
+using CommunityToolkit.Mvvm.DependencyInjection;
+using Screenbox.Core.ViewModels;
+using Windows.Graphics.Imaging;
+using Windows.UI.Xaml.Media.Imaging;
+using Windows.Storage.Streams;
 using System.Threading;
 using System.Threading.Tasks;
 using Screenbox.Core.Playback;
@@ -64,6 +71,7 @@ internal static class ColorStartupCheck
             int result = await Task.Run(ColorRuntimeDiagnostics.RunSelfTest);
             File.WriteAllText(Path.Combine(folder, "color-self-test.log"), $"Native color self-test: {result}");
             await CheckPlaybackSurfaceAsync(root);
+            await CheckSubtitlePanelAsync(root, folder);
             File.WriteAllText(Path.Combine(folder, "color-surface-test.log"), "Playback surface check: 8 transitions");
         }
         catch (Exception error)
@@ -108,7 +116,7 @@ internal static class ColorStartupCheck
                 {
                     BufferTime = TimeSpan.Zero,
                     Duration = TimeSpan.FromSeconds(60),
-                    CanSeek = false
+                    CanSeek = true
                 };
                 byte[] pixels = new byte[64 * 32 * 3];
                 for (int i = 0; i < pixels.Length; i += 2)
@@ -120,7 +128,12 @@ internal static class ColorStartupCheck
 
                 var buffer = CryptographicBuffer.CreateFromByteArray(pixels);
                 long frame = -1;
-                stream.Starting += (_, args) => args.Request.SetActualStartPosition(TimeSpan.Zero);
+                stream.Starting += (_, args) =>
+                {
+                    TimeSpan position = args.Request.StartPosition ?? TimeSpan.Zero;
+                    Interlocked.Exchange(ref frame, position.Ticks / TimeSpan.FromMilliseconds(40).Ticks - 1);
+                    args.Request.SetActualStartPosition(position);
+                };
                 stream.SampleRequested += (_, args) =>
                 {
                     long index = Interlocked.Increment(ref frame);
@@ -143,6 +156,26 @@ internal static class ColorStartupCheck
                     await Task.Delay(80);
                     if (Interlocked.Read(ref frame) < 0)
                         throw new InvalidOperationException("The surface did not request a P010 sample.");
+                    if (transition == 0)
+                    {
+                        using var subtitles = new ExternalSubtitleSession();
+                        var text = new StringBuilder("[Events]" + Environment.NewLine + "Format: Start, End, Text" + Environment.NewLine);
+                        for (int cue = 0; cue < 10_000; cue++)
+                        {
+                            TimeSpan start = TimeSpan.FromSeconds(cue);
+                            TimeSpan end = start + TimeSpan.FromMilliseconds(500);
+                            text.AppendLine($"Dialogue: {start:hh\\:mm\\:ss\\.ff},{end:hh\\:mm\\:ss\\.ff},Caption {cue}");
+                        }
+
+                        subtitles.Select("fixture");
+                        await subtitles.LoadAsync("fixture", ".ass", _ => Task.FromResult<Stream>(
+                            new MemoryStream(Encoding.UTF8.GetBytes(text.ToString()))));
+                        if (!player.PlaybackSession.CanSeek) throw new InvalidOperationException("Loading captions disabled seeking.");
+                        player.PlaybackSession.Position = TimeSpan.FromSeconds(2);
+                        await Task.Delay(200);
+                        if (player.PlaybackSession.Position < TimeSpan.FromSeconds(2))
+                            throw new InvalidOperationException("Seeking after subtitle loading did not complete.");
+                    }
                 }
                 finally
                 {
@@ -161,4 +194,40 @@ internal static class ColorStartupCheck
             surface.Visibility = visibility;
         }
     }
+    [WinRT.DynamicWindowsRuntimeCast(typeof(Microsoft.UI.Xaml.Controls.NumberBox))]
+    private static async Task CheckSubtitlePanelAsync(FrameworkElement root, string folder)
+    {
+        var picker = new Controls.CompositeTrackPicker();
+        var flyout = new Flyout { Content = picker };
+        PlaybackSessionViewModel session = Ioc.Default.GetRequiredService<PlaybackSessionViewModel>();
+        double previous = session.SubtitleTimingOffset;
+        try
+        {
+            flyout.ShowAt(root);
+            await Task.Delay(300);
+            var field = (Microsoft.UI.Xaml.Controls.NumberBox)picker.FindName("SubtitleTimingOffsetBox");
+            session.SubtitleTimingOffset = 1000;
+            if (field.Value != 1000) throw new InvalidOperationException("The subtitle offset did not reach the visible control.");
+            field.Value = -1000;
+            if (session.SubtitleTimingOffset != -1000) throw new InvalidOperationException("The subtitle offset input was not applied.");
+            session.ResetSubtitleTimingOffsetCommand.Execute(null);
+            if (field.Value != 0) throw new InvalidOperationException("The subtitle offset did not reset.");
+            var bitmap = new RenderTargetBitmap();
+            await bitmap.RenderAsync(picker);
+            var pixels = await bitmap.GetPixelsAsync();
+            StorageFile image = await ApplicationData.Current.LocalFolder.CreateFileAsync("subtitle-panel.png", CreationCollisionOption.ReplaceExisting);
+            using IRandomAccessStream output = await image.OpenAsync(FileAccessMode.ReadWrite);
+            var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, output);
+            encoder.SetPixelData(BitmapPixelFormat.Bgra8, BitmapAlphaMode.Premultiplied,
+                (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, pixels.ToArray());
+            await encoder.FlushAsync();
+            File.WriteAllText(Path.Combine(folder, "subtitle-panel.log"), "Subtitle panel check: positive, negative and reset passed");
+        }
+        finally
+        {
+            session.SubtitleTimingOffset = previous;
+            flyout.Hide();
+        }
+    }
+
 }

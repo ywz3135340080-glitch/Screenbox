@@ -142,11 +142,61 @@
                 </ListView.Header>
                 <ListView.Footer>
                     <ListViewItem
-                        Content="{x:Bind strings:Resources.AddSubtitle}"
+                        AutomationProperties.Name="{x:Bind strings:Resources.AddSubtitle, Mode=OneTime}"
                         KeyUp="AddSubtitleListViewFooterItem_OnKeyUp"
-                        Tapped="AddSubtitleListViewFooterItem_OnTapped" />
+                        Tapped="AddSubtitleListViewFooterItem_OnTapped">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <muxc:ProgressRing
+                                Width="16"
+                                Height="16"
+                                IsActive="{x:Bind ViewModel.AddSubtitleCommand.IsRunning, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.AddSubtitleCommand.IsRunning, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}" />
+                            <TextBlock Text="{x:Bind strings:Resources.AddSubtitle, Mode=OneTime}" />
+                        </StackPanel>
+                    </ListViewItem>
                 </ListView.Footer>
             </ListView>
+            <!--  Subtitle synchronization is available without opening a second options page.  -->
+            <Grid Margin="12,8,12,12">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock
+                    Margin="0,0,0,6"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="{x:Bind strings:Resources.TimingOffset, Mode=OneTime}" />
+                <TextBlock
+                    Grid.Column="1"
+                    Margin="0,0,0,6"
+                    HorizontalAlignment="Center"
+                    Style="{StaticResource CaptionTextBlockStyle}"
+                    Text="ms" />
+                <muxc:NumberBox
+                    x:Name="SubtitleTimingOffsetBox"
+                    Grid.Row="1"
+                    AutomationProperties.Name="{x:Bind strings:Resources.TimingOffset, Mode=OneTime}"
+                    LargeChange="1000"
+                    Maximum="{x:Bind controls:CompositeTrackPicker.SubtitleTimingOffsetMax, Mode=OneTime}"
+                    Minimum="{x:Bind controls:CompositeTrackPicker.SubtitleTimingOffsetMin, Mode=OneTime}"
+                    SmallChange="50"
+                    SpinButtonPlacementMode="Compact"
+                    Value="{x:Bind PlaybackSession.SubtitleTimingOffset, Mode=TwoWay}" />
+                <Button
+                    Grid.Row="1"
+                    Grid.Column="1"
+                    MinWidth="32"
+                    Margin="4,0,0,0"
+                    Padding="6,0"
+                    AutomationProperties.Name="{x:Bind strings:Resources.Default, Mode=OneTime}"
+                    Command="{x:Bind PlaybackSession.ResetSubtitleTimingOffsetCommand, Mode=OneTime}"
+                    Content="0"
+                    ToolTipService.ToolTip="{x:Bind strings:Resources.Default, Mode=OneTime}" />
+            </Grid>
         </StackPanel>
         <!--#endregion-->
 
@@ -339,15 +389,15 @@
                     FontSize="{StaticResource CaptionTextBlockFontSize}"
                     IsTextScaleFactorEnabled="False" />
 
-                <Slider
+                <muxc:NumberBox
                     Grid.Column="1"
                     Margin="8,0,8,0"
-                    AutomationProperties.Name="{x:Bind strings:Resources.TimingOffset}"
-                    IsThumbToolTipEnabled="False"
-                    Maximum="{x:Bind controls:CompositeTrackPicker.TimingOffsetMax}"
-                    Minimum="{x:Bind controls:CompositeTrackPicker.TimingOffsetMin}"
-                    SmallChange="25"
-                    StepFrequency="50"
+                    AutomationProperties.Name="{x:Bind strings:Resources.TimingOffset, Mode=OneTime}"
+                    LargeChange="1000"
+                    Maximum="{x:Bind controls:CompositeTrackPicker.SubtitleTimingOffsetMax, Mode=OneTime}"
+                    Minimum="{x:Bind controls:CompositeTrackPicker.SubtitleTimingOffsetMin, Mode=OneTime}"
+                    SmallChange="50"
+                    SpinButtonPlacementMode="Hidden"
                     Value="{x:Bind PlaybackSession.SubtitleTimingOffset, Mode=TwoWay}" />
 
                 <RepeatButton

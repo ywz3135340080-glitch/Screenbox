@@ -43,6 +43,7 @@ public sealed partial class VlcMediaPlayer
         lock (_colorLifetimeLock)
         {
             Interlocked.Increment(ref _colorGeneration);
+            ResetExternalSubtitles();
             _routingPlayback = false;
             NativeMediaPlayer? player = _colorPlayer;
             ColorMediaSource? source = _colorSource;
@@ -103,6 +104,8 @@ public sealed partial class VlcMediaPlayer
     {
         int generation = Volatile.Read(ref _colorGeneration);
         _routingPlayback = true;
+        var routeReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _subtitleRoute = routeReady.Task;
         try
         {
             // A new output must wait until the old UI surface has detached and released its player.
@@ -219,8 +222,7 @@ public sealed partial class VlcMediaPlayer
             if (_wantColorPlay) player.Play();
 
             // Metadata collections can continue to use the existing LibVLC parser.
-            try { await item.Media.Parse(LibVLCSharp.Shared.MediaParseOptions.ParseLocal).ConfigureAwait(false); }
-            catch (Exception error) { LogColorFailure(error); }
+            _ = ParseColorMetadataAsync(item);
         }
         catch (Exception error)
         {
@@ -230,8 +232,14 @@ public sealed partial class VlcMediaPlayer
             PlaybackState = MediaPlaybackState.None;
             MediaFailed?.Invoke(this, EventArgs.Empty);
         }
+        finally { routeReady.TrySetResult(); }
     }
 
+    private static async Task ParseColorMetadataAsync(PlaybackItem item)
+    {
+        try { await item.Media.Parse(LibVLCSharp.Shared.MediaParseOptions.ParseLocal).ConfigureAwait(false); }
+        catch (Exception error) { LogColorFailure(error); }
+    }
 
     private async Task AddColorSubtitleAsync(IStorageFile file, bool select)
     {

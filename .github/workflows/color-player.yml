@@ -5,6 +5,7 @@ on:
     paths:
       - Screenbox.Core/**
       - Screenbox/Controls/PlayerElement*
+      - Screenbox/Controls/CompositeTrackPicker*
       - Screenbox/Helpers/ColorStartupCheck.cs
       - Screenbox/App.xaml.cs
       - Screenbox/Screenbox.csproj

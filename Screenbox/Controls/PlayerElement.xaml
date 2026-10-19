@@ -54,5 +54,27 @@
             IsHitTestVisible="False"
             Stretch="Uniform"
             Visibility="Collapsed" />
+        <!--  Text subtitles use their own clock and never reopen the decoding source.  -->
+        <Border
+            x:Name="SubtitleOverlay"
+            MaxWidth="1400"
+            Margin="24,0,24,52"
+            Padding="8,4"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Bottom"
+            Background="#99000000"
+            Canvas.ZIndex="2"
+            CornerRadius="4"
+            IsHitTestVisible="False"
+            Visibility="{x:Bind ViewModel.HasSubtitleText, Mode=OneWay, Converter={StaticResource BoolToVisibilityConverter}}">
+            <TextBlock
+                FontSize="{x:Bind ViewModel.SubtitleFontSize, Mode=OneWay}"
+                FontWeight="SemiBold"
+                Foreground="White"
+                MaxLines="6"
+                Text="{x:Bind ViewModel.SubtitleText, Mode=OneWay}"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+        </Border>
     </Grid>
 </UserControl>
