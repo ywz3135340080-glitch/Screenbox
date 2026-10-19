@@ -118,6 +118,5 @@ jobs:
             artifacts/setup-preview.png
             setup-selftest.txt
             artifacts/startup-check/**
-            Screenbox/bin/**/Screenbox.pdb
           if-no-files-found: ignore
           retention-days: 7
