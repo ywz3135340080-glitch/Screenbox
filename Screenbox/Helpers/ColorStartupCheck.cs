@@ -128,6 +128,7 @@ internal static class ColorStartupCheck
 
                 var buffer = CryptographicBuffer.CreateFromByteArray(pixels);
                 long frame = -1;
+                var firstSample = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                 stream.Starting += (_, args) =>
                 {
                     TimeSpan position = args.Request.StartPosition ?? TimeSpan.Zero;
@@ -140,6 +141,7 @@ internal static class ColorStartupCheck
                     var sample = MediaStreamSample.CreateFromBuffer(buffer, TimeSpan.FromMilliseconds(index * 40));
                     sample.Duration = TimeSpan.FromMilliseconds(40);
                     args.Request.Sample = sample;
+                    firstSample.TrySetResult();
                 };
                 MediaSource source = MediaSource.CreateFromMediaStreamSource(stream);
                 var player = new MediaPlayer { AutoPlay = false, IsMuted = true };
@@ -152,10 +154,8 @@ internal static class ColorStartupCheck
                     surface.Visibility = Visibility.Visible;
                     surface.SetMediaPlayer(player);
                     player.Play();
-                    await opened.Task.WaitAsync(TimeSpan.FromSeconds(6));
+                    await Task.WhenAll(opened.Task, firstSample.Task).WaitAsync(TimeSpan.FromSeconds(8));
                     await Task.Delay(80);
-                    if (Interlocked.Read(ref frame) < 0)
-                        throw new InvalidOperationException("The surface did not request a P010 sample.");
                     if (transition == 0)
                     {
                         using var subtitles = new ExternalSubtitleSession();
