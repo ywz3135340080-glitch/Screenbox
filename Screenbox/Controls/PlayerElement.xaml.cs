@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.DependencyInjection;
 using Screenbox.Core.ViewModels;
 using Windows.UI.Input;
@@ -41,10 +42,31 @@ public sealed partial class PlayerElement : UserControl
         };
 
         _gestureRecognizer.Holding += GestureRecognizer_OnHolding;
+        Loaded += (_, _) =>
+        {
+            ViewModel.PropertyChanged -= OnPlayerPropertyChanged;
+            ViewModel.PropertyChanged += OnPlayerPropertyChanged;
+            UpdateColorPlayer();
+        };
+    }
+
+    private void OnPlayerPropertyChanged(object? sender, PropertyChangedEventArgs args)
+    {
+        if (args.PropertyName == nameof(PlayerElementViewModel.ColorPlayer)) UpdateColorPlayer();
+    }
+
+    private void UpdateColorPlayer()
+    {
+        var player = ViewModel.ColorPlayer;
+        ColorVideoView.SetMediaPlayer(player);
+        ColorVideoView.Visibility = player is null ? Visibility.Collapsed : Visibility.Visible;
+        VlcVideoView.Opacity = player is null ? 1 : 0;
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
+        ViewModel.PropertyChanged -= OnPlayerPropertyChanged;
+        ColorVideoView.SetMediaPlayer(null);
         if (_gestureRecognizer is not null)
         {
             _gestureRecognizer.CompleteGesture();

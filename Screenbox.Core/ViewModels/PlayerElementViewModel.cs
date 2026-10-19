@@ -44,6 +44,9 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
 
     public MediaPlayer? VlcPlayer => VlcMediaPlayer?.VlcPlayer;
 
+    /// <summary>Gets the presentation player for corrected Dolby Vision video.</summary>
+    public Windows.Media.Playback.MediaPlayer? ColorPlayer => VlcMediaPlayer?.ColorPlayer;
+
     private VlcMediaPlayer? VlcMediaPlayer
     {
         get => _playerContext.MediaPlayer as VlcMediaPlayer;
@@ -121,6 +124,7 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
         VlcMediaPlayer? oldPlayer = VlcMediaPlayer;
         if (oldPlayer != null)
         {
+            oldPlayer.ColorPlayerChanged -= OnColorPlayerChanged;
             oldPlayer.PlaybackStateChanged -= OnPlaybackStateChanged;
             oldPlayer.PositionChanged -= OnPositionChanged;
             oldPlayer.MediaFailed -= OnMediaFailed;
@@ -191,6 +195,7 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
                 }
 
                 VlcMediaPlayer = vlcMediaPlayer;
+                vlcMediaPlayer.ColorPlayerChanged += OnColorPlayerChanged;
                 player.PlaybackStateChanged += OnPlaybackStateChanged;
                 player.PositionChanged += OnPositionChanged;
                 player.MediaFailed += OnMediaFailed;
@@ -206,6 +211,11 @@ public sealed partial class PlayerElementViewModel : ObservableRecipient,
                 });
             }
         });
+    }
+
+    private void OnColorPlayerChanged(object? sender, EventArgs args)
+    {
+        _dispatcherQueue.TryEnqueue(() => OnPropertyChanged(nameof(ColorPlayer)));
     }
 
     public void UpdatePlayerViewSize(Size size)

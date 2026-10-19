@@ -1,0 +1,79 @@
+name: Screenbox HDR integration
+on:
+  push:
+    branches: [codex/dolby-vision]
+    paths:
+      - Screenbox.Core/**
+      - Screenbox/Controls/PlayerElement*
+      - Screenbox/Helpers/ColorStartupCheck.cs
+      - Screenbox/App.xaml.cs
+      - Screenbox/Screenbox.csproj
+      - tools/Screenbox.PlaybackProbe/**
+      - scripts/color-player/**
+      - .github/workflows/color-player.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: screenbox-color-app
+  cancel-in-progress: true
+jobs:
+  build:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - name: Locate Visual Studio 2026 MSBuild
+        run: |
+          $vswhere = Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Microsoft Visual Studio\Installer\vswhere.exe"
+          $buildTool = & $vswhere -version "[18.0,19.0)" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $buildTool) { throw "Visual Studio 2026 is required" }
+          "SCREENBOX_MSBUILD=$buildTool" >> $env:GITHUB_ENV
+      - name: Build and run the core tests
+        run: |
+          & $env:SCREENBOX_MSBUILD Screenbox.Core.Tests/Screenbox.Core.Tests.csproj -restore -m -v:minimal -p:Configuration=Release -p:Platform=x64 "-p:OutDir=$env:RUNNER_TEMP\ColorTests\"
+          if ($LASTEXITCODE -ne 0) { throw "Core build failed" }
+          & "$env:RUNNER_TEMP\ColorTests\Screenbox.Core.Tests.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Core tests failed" }
+      - name: Publish the playback graph verification host
+        run: |
+          & $env:SCREENBOX_MSBUILD tools/Screenbox.PlaybackProbe/Screenbox.PlaybackProbe.csproj -restore -t:Publish -m -v:minimal -p:Configuration=Release -p:Platform=x64 "-p:PublishDir=$env:GITHUB_WORKSPACE/artifacts/PlaybackProbe/"
+          if ($LASTEXITCODE -ne 0) { throw "Playback probe build failed" }
+      - name: Retrieve the matching native component
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/color-player/Get-NativeRuntime.ps1 -Commit $env:GITHUB_SHA
+      - name: Verify the managed-to-native ABI
+        run: |
+          Copy-Item Screenbox/NativeColor/*.dll artifacts/PlaybackProbe/
+          & ./artifacts/PlaybackProbe/Screenbox.PlaybackProbe.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Managed native integration test failed" }
+          7z a -t7z -mx=9 artifacts/screenbox-playback-probe.7z ./artifacts/PlaybackProbe/*.exe ./artifacts/PlaybackProbe/*.dll
+      - name: Configure preview package identity
+        run: |
+          ./scripts/Update-AppxManifest.ps1 -Identity SideloadUnsigned
+          [xml]$manifest = Get-Content Screenbox/Package.appxmanifest -Raw
+          $manifest.Package.Identity.Name = "Screenbox.ColorPreview"
+          $manifest.Package.Identity.Version = "0.2.0.$env:GITHUB_RUN_NUMBER"
+          $manifest.Package.Properties.DisplayName = "Screenbox HDR"
+          $manifest.Package.Applications.Application.VisualElements.DisplayName = "Screenbox HDR"
+          $manifest.Save((Join-Path $PWD "Screenbox/Package.appxmanifest"))
+      - name: Build the packaged Screenbox app
+        run: |
+          & $env:SCREENBOX_MSBUILD Screenbox/Screenbox.csproj -restore -m -v:minimal -p:Configuration=Release -p:Platform=x64 -p:ContinuousIntegrationBuild=true -p:AppxBundle=Never -p:AppxBundlePlatforms=x64 -p:AppxPackageSigningEnabled=false -p:UapAppxPackageBuildMode=SideloadOnly
+          if ($LASTEXITCODE -ne 0) { throw "Screenbox build failed" }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: screenbox-playback-probe.7z
+          path: artifacts/screenbox-playback-probe.7z
+          archive: false
+          retention-days: 7
+      - uses: actions/upload-artifact@v7
+        with:
+          name: screenbox-hdr-internal-package
+          path: Screenbox/AppPackages/**
+          retention-days: 7

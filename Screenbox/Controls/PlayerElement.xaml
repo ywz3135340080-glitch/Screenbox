@@ -43,7 +43,16 @@
             Initialized="VlcVideoView_OnInitialized"
             IsHitTestVisible="False"
             KeyboardAcceleratorPlacementMode="Hidden"
-            MediaPlayer="{x:Bind ViewModel.VlcPlayer}"
+            MediaPlayer="{x:Bind ViewModel.VlcPlayer, Mode=OneWay}"
             SizeChanged="VlcVideoView_OnSizeChanged" />
+        <MediaPlayerElement
+            x:Name="ColorVideoView"
+            Canvas.ZIndex="1"
+            AreTransportControlsEnabled="False"
+            AutoPlay="False"
+            FlowDirection="LeftToRight"
+            IsHitTestVisible="False"
+            Stretch="Uniform"
+            Visibility="Collapsed" />
     </Grid>
 </UserControl>

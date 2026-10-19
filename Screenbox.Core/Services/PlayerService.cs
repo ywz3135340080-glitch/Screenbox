@@ -75,7 +75,7 @@ public sealed partial class PlayerService : IPlayerService
     {
         if (player is VlcMediaPlayer vlcMediaPlayer)
         {
-            vlcMediaPlayer.VlcPlayer.Dispose();
+            vlcMediaPlayer.Close();
             vlcMediaPlayer.LibVlc.Dispose();
         }
     }

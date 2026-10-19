@@ -211,6 +211,7 @@ sealed partial class App : Application
             rootFrame.Navigate(typeof(MainPage), true);
         }
 
+        ColorStartupCheck.Observe(rootFrame);
         Window.Current.Activate();
         WeakReferenceMessenger.Default.Send(new PlayFilesMessage(args.Files, args.NeighboringFilesQuery));
     }
@@ -238,6 +239,7 @@ sealed partial class App : Application
         }
 
         // Ensure the current window is active
+        ColorStartupCheck.Observe(rootFrame);
         Window.Current.Activate();
 
 #if DEBUG
