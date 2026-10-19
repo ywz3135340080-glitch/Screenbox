@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 namespace Screenbox.Core.Playback;
 
 /// <summary>Owns cancellable subtitle reads and keeps late loads from replacing a new selection.</summary>
-public sealed class ExternalSubtitleSession : IDisposable
+public sealed partial class ExternalSubtitleSession : IDisposable
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _lifetime = new();

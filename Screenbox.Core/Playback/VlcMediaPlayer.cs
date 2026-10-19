@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using LibVLCSharp.Shared;
 using Screenbox.Core.Events;
 using Windows.Devices.Enumeration;
