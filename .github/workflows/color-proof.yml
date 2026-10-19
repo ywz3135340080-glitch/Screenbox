@@ -36,6 +36,13 @@ jobs:
           if ($result.width -ne 64 -or $result.height -ne 32) { throw "Invalid output size" }
           if ((Get-Item corrected-sdr.rgba).Length -ne 8192) { throw "Missing SDR pixels" }
           if ((Get-Item corrected-hdr.rgba64).Length -ne 16384) { throw "Missing HDR pixels" }
+          $pixels = [System.IO.File]::ReadAllBytes("corrected-sdr.rgba")
+          if ($pixels[0] -lt 40 -or $pixels[0] -gt 220) { throw "Invalid gray output" }
+          for ($i = 0; $i -lt $pixels.Length; $i += 4) {
+            if ([Math]::Abs([int]$pixels[$i] - [int]$pixels[$i+1]) -gt 2 -or
+                [Math]::Abs([int]$pixels[$i] - [int]$pixels[$i+2]) -gt 2 -or
+                $pixels[$i+3] -ne 255) { throw "Corrupt neutral-frame pixels" }
+          }
           Remove-Item corrected-sdr.rgba,corrected-hdr.rgba64,result.json
       - name: Package internal proof
         shell: pwsh

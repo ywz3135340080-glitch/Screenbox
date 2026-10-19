@@ -18,7 +18,7 @@ cd ffmpeg-src
 make -j4
 make install
 cd "$root"
-export PKG_CONFIG_PATH="$prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="$prefix/lib/pkgconfig:/ucrt64/lib/pkgconfig"
 gcc -std=c11 -O2 -Wall -Wextra -Wno-unused-function -municode \
   scripts/color-proof/color-probe.c -o native-out/color-probe.exe \
   $(pkg-config --cflags --libs libplacebo) \

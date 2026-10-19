@@ -51,7 +51,7 @@ static int render_frame(pl_gpu gpu, pl_renderer renderer, struct pl_frame *src,
     target.color.hdr.min_luma = hdr ? 0.001f : 0.203f;
     if (!pl_render_image(renderer, src, &target, &pl_render_default_params)) goto done;
     if (!pl_download_avframe(gpu, &target, out)) goto done;
-    ok = save_raw(path, out);
+    ok = path ? save_raw(path, out) : 1;
 done:
     for (int i = 0; i < 4; ++i) pl_tex_destroy(gpu, &textures[i]);
     av_frame_free(&out);
@@ -102,6 +102,7 @@ int wmain(int argc, wchar_t **argv)
     int result = 1, selftest = argc == 2 && !wcscmp(argv[1], L"--self-test");
     AVFormatContext *format = NULL;
     AVCodecContext *codec = NULL;
+    int video = -1;
     AVFrame *frame = av_frame_alloc();
     pl_d3d11 d3d = NULL;
     pl_renderer renderer = NULL;
@@ -131,8 +132,8 @@ int wmain(int argc, wchar_t **argv)
             }
         }
     } else {
-        if (argc != 3) {
-            fprintf(stderr, "Usage: color-probe input.mp4 seconds\n");
+        if (argc != 3 && argc != 4) {
+            fprintf(stderr, "Usage: color-probe input.mp4 seconds [frame-count]\n");
             goto done;
         }
         int len = WideCharToMultiByte(CP_UTF8, 0, argv[1], -1, NULL, 0, NULL, NULL);
@@ -142,7 +143,7 @@ int wmain(int argc, wchar_t **argv)
         if (avformat_open_input(&format, input, NULL, NULL) < 0) goto done;
         if (avformat_find_stream_info(format, NULL) < 0) goto done;
         const AVCodec *decoder = NULL;
-        int video = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, -1, &decoder, 0);
+        video = av_find_best_stream(format, AVMEDIA_TYPE_VIDEO, -1, -1, &decoder, 0);
         if (video < 0 || !decoder) goto done;
         codec = avcodec_alloc_context3(decoder);
         if (!codec) goto done;
@@ -176,6 +177,27 @@ int wmain(int argc, wchar_t **argv)
         control.repr.dovi = NULL;
         if (!render_frame(d3d->gpu, renderer, &control, "uncorrected-sdr.rgba", 0)) goto done;
     }
+    int validated_frames = 1;
+    int requested_frames = argc == 4 ? _wtoi(argv[3]) : 1;
+    if (requested_frames < 1 || requested_frames > 600) goto done;
+    LARGE_INTEGER started, finished, frequency;
+    QueryPerformanceFrequency(&frequency);
+    QueryPerformanceCounter(&started);
+    for (int n = 1; n < requested_frames; ++n) {
+        pl_unmap_avframe(d3d->gpu, &image);
+        mapped = 0;
+        av_frame_unref(frame);
+        if (receive_frame(format, codec, video, -1, frame) < 0) goto done;
+        if (!av_frame_get_side_data(frame, AV_FRAME_DATA_DOVI_METADATA)) goto done;
+        if (!pl_map_avframe_ex(d3d->gpu, &image,
+            pl_avframe_params(.frame = frame, .tex = textures, .map_dovi = true))) goto done;
+        mapped = 1;
+        if (image.repr.sys != PL_COLOR_SYSTEM_DOLBYVISION || !image.repr.dovi) goto done;
+        if (!render_frame(d3d->gpu, renderer, &image, NULL, 1)) goto done;
+        ++validated_frames;
+    }
+    QueryPerformanceCounter(&finished);
+    double elapsed = (double) (finished.QuadPart - started.QuadPart) / frequency.QuadPart;
     report = fopen("result.json", "wb");
     if (!report) goto done;
     fprintf(report,
@@ -183,9 +205,11 @@ int wmain(int argc, wchar_t **argv)
         "  \"pixel_format\": \"%s\",\n  \"dolby_metadata_applied\": %s,\n"
         "  \"software_adapter\": %s,\n  \"renderer\": \"libplacebo-d3d11\",\n"
         "  \"hdr_output\": \"BT.2020 PQ RGBA16, 1000 nit target\",\n"
-        "  \"scope\": \"single-frame decode and offscreen render; no playback validation\"\n}\n",
+        "  \"validated_frames\": %d,\n  \"following_frames_seconds\": %.6f,\n"
+        "  \"scope\": \"decode and offscreen render; no audio sync or display validation\"\n}\n",
         frame->width, frame->height, av_get_pix_fmt_name(frame->format),
-        dolby ? "true" : "false", d3d->software ? "true" : "false");
+        dolby ? "true" : "false", d3d->software ? "true" : "false",
+        validated_frames, elapsed);
     if (fclose(report)) { report = NULL; goto done; }
     report = NULL;
     printf("Frame decoded and rendered successfully: %dx%d, DV=%d, WARP=%d\n",
