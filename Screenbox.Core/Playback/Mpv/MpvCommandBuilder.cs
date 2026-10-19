@@ -12,7 +12,7 @@ public static class MpvCommandBuilder
     {
         if (arguments.Length == 0) throw new ArgumentException("A command name is required.", nameof(arguments));
         var command = new JsonArray();
-        foreach (string argument in arguments) command.Add(JsonValue.Create(argument));
+        foreach (string argument in arguments) command.Add((JsonNode?)JsonValue.Create(argument));
         if (arguments.Length >= 3 && arguments[0] == "set_property")
         {
             if (arguments[1] is "pause" or "mute") command[2] = arguments[2] == "yes";
