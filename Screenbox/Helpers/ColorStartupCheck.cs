@@ -15,6 +15,7 @@ internal static class ColorStartupCheck
         else root.Loaded += RootLoaded;
     }
 
+    [WinRT.DynamicWindowsRuntimeCast(typeof(FrameworkElement))]
     private static void RootLoaded(object sender, RoutedEventArgs args)
     {
         ((FrameworkElement)sender).Loaded -= RootLoaded;
