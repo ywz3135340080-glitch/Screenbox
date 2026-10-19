@@ -1,0 +1,46 @@
+name: Dolby Vision metadata tests
+on:
+  push:
+    branches: [codex/dolby-vision]
+    paths:
+      - Screenbox.Core/Playback/DolbyVisionDetector.cs
+      - Screenbox.Core.Tests/Playback/DolbyVisionDetectorTests.cs
+      - tools/Screenbox.ColorProbe/**
+      - .github/workflows/color-metadata-tests.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - name: Locate Visual Studio 2026 MSBuild
+        run: |
+          $vswhere = Join-Path ([Environment]::GetFolderPath("ProgramFilesX86")) "Microsoft Visual Studio\Installer\vswhere.exe"
+          $buildTool = & $vswhere -version "[18.0,19.0)" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
+          if (-not $buildTool) { throw "Visual Studio 2026 is required" }
+          "SCREENBOX_MSBUILD=$buildTool" >> $env:GITHUB_ENV
+      - name: Build the core and pure logic tests
+        run: |
+          & $env:SCREENBOX_MSBUILD Screenbox.Core.Tests/Screenbox.Core.Tests.csproj -restore -m -v:minimal -p:Configuration=Release -p:Platform=x64 "-p:OutDir=$env:RUNNER_TEMP\ColorTests\"
+          if ($LASTEXITCODE -ne 0) { throw "Core test compilation failed" }
+      - name: Run the core tests
+        run: |
+          & "$env:RUNNER_TEMP\ColorTests\Screenbox.Core.Tests.exe"
+          if ($LASTEXITCODE -ne 0) { throw "Core tests failed" }
+      - name: Publish internal metadata probe
+        run: |
+          & $env:SCREENBOX_MSBUILD tools/Screenbox.ColorProbe/Screenbox.ColorProbe.csproj -restore -t:Publish -m -v:minimal -p:Configuration=Release -p:Platform=x64 "-p:PublishDir=$env:GITHUB_WORKSPACE/artifacts/ColorProbe/"
+          if ($LASTEXITCODE -ne 0) { throw "Metadata probe publication failed" }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Screenbox.ColorProbe.exe
+          path: artifacts/ColorProbe/Screenbox.ColorProbe.exe
+          archive: false
+          if-no-files-found: error
+          retention-days: 7
