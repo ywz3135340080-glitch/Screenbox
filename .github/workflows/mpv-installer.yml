@@ -1,11 +1,13 @@
 name: Screenbox graphical installer
 on:
-  push:
-    branches: [codex/mpv-backend]
-    paths:
-      - 'scripts/mpv-preview/**'
-      - '.github/workflows/mpv-installer.yml'
   workflow_dispatch:
+    inputs:
+      artifact_id:
+        description: Verified player payload artifact ID from a successful current build
+        required: true
+      artifact_sha256:
+        description: SHA256 digest of the downloaded payload artifact archive
+        required: true
 permissions:
   contents: read
   actions: read
@@ -24,7 +26,100 @@ jobs:
       - name: Retrieve verified player payload
         env:
           GH_TOKEN: ${{ github.token }}
+          PAYLOAD_ARTIFACT_ID: ${{ inputs.artifact_id }}
+          PAYLOAD_SHA256: ${{ inputs.artifact_sha256 }}
         run: |
+          if ($env:PAYLOAD_ARTIFACT_ID -notmatch '^\d+ -ItemType Directory -Path artifacts -Force
+          $headers=@{Authorization="Bearer $env:GH_TOKEN";Accept="application/vnd.github+json"}
+          Invoke-WebRequest -Uri "https://api.github.com/repos/ywz3135340080-glitch/Screenbox/actions/artifacts/$env:PAYLOAD_ARTIFACT_ID/zip" -Headers $headers -OutFile artifacts/player-artifact.zip
+          $digest=(Get-FileHash -LiteralPath artifacts/player-artifact.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($digest -ne $env:PAYLOAD_SHA256.ToLowerInvariant()){throw "Player payload checksum mismatch."}
+          Expand-Archive -LiteralPath artifacts/player-artifact.zip -DestinationPath artifacts/player-payload
+          $payload=Get-ChildItem -LiteralPath artifacts/player-payload -Recurse -File -Filter ScreenboxMpvPreview-x64.zip | Select-Object -First 1
+          if(-not $payload){throw "Verified player payload is missing."}
+          Copy-Item -LiteralPath $payload.FullName -Destination artifacts/ScreenboxMpvPreview-x64.zip
+      - name: Verify installed and missing frameworks
+        run: ./scripts/mpv-preview/Test-SetupEngine.ps1 -Payload artifacts/ScreenboxMpvPreview-x64.zip
+      - name: Install and launch the packaged player
+        run: |
+          Expand-Archive -LiteralPath artifacts/ScreenboxMpvPreview-x64.zip -DestinationPath artifacts/startup-payload
+          $env:SCREENBOX_KIT_DIR = (Resolve-Path artifacts/startup-payload).Path
+          & powershell.exe -NoLogo -NoProfile -NonInteractive -File scripts/mpv-preview/InstallEngine.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Player deployment failed." }
+          ./scripts/mpv-preview/Test-PlayerStartup.ps1
+      - name: Compile graphical installer
+        run: ./scripts/mpv-preview/Build-Setup.ps1 -SourceCommit $env:GITHUB_SHA
+      - name: Verify embedded player and render interface
+        run: |
+          $installer=Join-Path $PWD "artifacts/ScreenboxMpvPreview-Setup.exe"
+          $test=Start-Process -FilePath $installer -ArgumentList "--self-test" -WindowStyle Hidden -Wait -PassThru
+          if($test.ExitCode -ne 0){throw "Installer payload self-test failed."}
+          $preview=Join-Path $PWD "artifacts/setup-preview.png"
+          $render=Start-Process -FilePath $installer -ArgumentList @("--render",$preview) -WindowStyle Hidden -Wait -PassThru
+          if($render.ExitCode -ne 0 -or -not(Test-Path -LiteralPath $preview)){throw "Installer interface rendering failed."}
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/ScreenboxMpvPreview-Setup.exe
+          archive: false
+          retention-days: 30
+      - name: Upload interface diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-interface-check
+          path: |
+            artifacts/setup-preview.png
+            setup-selftest.txt
+            artifacts/startup-check/**
+          if-no-files-found: ignore
+          retention-days: 7
+ -or $env:PAYLOAD_SHA256 -notmatch '^[a-fA-F0-9]{64} -ItemType Directory -Path artifacts -Force
+          $headers=@{Authorization="Bearer $env:GH_TOKEN";Accept="application/vnd.github+json"}
+          Invoke-WebRequest -Uri "https://api.github.com/repos/ywz3135340080-glitch/Screenbox/actions/artifacts/12144001041/zip" -Headers $headers -OutFile artifacts/player-artifact.zip
+          $digest=(Get-FileHash -LiteralPath artifacts/player-artifact.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if($digest -ne "aa14ea7cbacd39bf452b0197675808aa0bffcad0d6baa79414d93cd8bd9c8507"){throw "Player payload checksum mismatch."}
+          Expand-Archive -LiteralPath artifacts/player-artifact.zip -DestinationPath artifacts/player-payload
+          $payload=Get-ChildItem -LiteralPath artifacts/player-payload -Recurse -File -Filter ScreenboxMpvPreview-x64.zip | Select-Object -First 1
+          if(-not $payload){throw "Verified player payload is missing."}
+          Copy-Item -LiteralPath $payload.FullName -Destination artifacts/ScreenboxMpvPreview-x64.zip
+      - name: Verify installed and missing frameworks
+        run: ./scripts/mpv-preview/Test-SetupEngine.ps1 -Payload artifacts/ScreenboxMpvPreview-x64.zip
+      - name: Install and launch the packaged player
+        run: |
+          Expand-Archive -LiteralPath artifacts/ScreenboxMpvPreview-x64.zip -DestinationPath artifacts/startup-payload
+          $env:SCREENBOX_KIT_DIR = (Resolve-Path artifacts/startup-payload).Path
+          & powershell.exe -NoLogo -NoProfile -NonInteractive -File scripts/mpv-preview/InstallEngine.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Player deployment failed." }
+          ./scripts/mpv-preview/Test-PlayerStartup.ps1
+      - name: Compile graphical installer
+        run: ./scripts/mpv-preview/Build-Setup.ps1 -SourceCommit $env:GITHUB_SHA
+      - name: Verify embedded player and render interface
+        run: |
+          $installer=Join-Path $PWD "artifacts/ScreenboxMpvPreview-Setup.exe"
+          $test=Start-Process -FilePath $installer -ArgumentList "--self-test" -WindowStyle Hidden -Wait -PassThru
+          if($test.ExitCode -ne 0){throw "Installer payload self-test failed."}
+          $preview=Join-Path $PWD "artifacts/setup-preview.png"
+          $render=Start-Process -FilePath $installer -ArgumentList @("--render",$preview) -WindowStyle Hidden -Wait -PassThru
+          if($render.ExitCode -ne 0 -or -not(Test-Path -LiteralPath $preview)){throw "Installer interface rendering failed."}
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          path: artifacts/ScreenboxMpvPreview-Setup.exe
+          archive: false
+          retention-days: 30
+      - name: Upload interface diagnostic
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: installer-interface-check
+          path: |
+            artifacts/setup-preview.png
+            setup-selftest.txt
+            artifacts/startup-check/**
+          if-no-files-found: ignore
+          retention-days: 7
+) { throw "Invalid verified payload identifier or checksum." }
           $null=New-Item -ItemType Directory -Path artifacts -Force
           $headers=@{Authorization="Bearer $env:GH_TOKEN";Accept="application/vnd.github+json"}
           Invoke-WebRequest -Uri "https://api.github.com/repos/ywz3135340080-glitch/Screenbox/actions/artifacts/12144001041/zip" -Headers $headers -OutFile artifacts/player-artifact.zip
@@ -70,41 +165,3 @@ jobs:
             artifacts/startup-check/**
           if-no-files-found: ignore
           retention-days: 7
-
-  symbols:
-    runs-on: windows-2025-vs2026
-    timeout-minutes: 25
-    defaults:
-      run:
-        shell: pwsh
-    steps:
-      - uses: actions/checkout@v7
-      - name: Keep symbol resolver outside checkout
-        run: Copy-Item scripts/mpv-preview/Resolve-StartupSymbols.cs $env:RUNNER_TEMP/Resolve-StartupSymbols.cs
-      - uses: actions/checkout@v7
-        with:
-          ref: e9d592112a069c716429b41d24536d541bb8357f
-      - name: Rebuild the public crashing revision
-        run: |
-          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-          $buildTool = & $vswhere -version "[18.0,19.0)" -latest -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe | Select-Object -First 1
-          & $buildTool Screenbox.MpvBridge/Screenbox.MpvBridge.csproj -restore -t:Publish -m -v:minimal -p:Configuration=Release -p:Platform=x64 "-p:PublishDir=$env:GITHUB_WORKSPACE/artifacts/MpvBridge/"
-          if ($LASTEXITCODE -ne 0) { throw "Worker build failed." }
-          ./scripts/Update-AppxManifest.ps1 -Identity SideloadUnsigned
-          [xml]$manifest = Get-Content Screenbox/Package.appxmanifest -Raw
-          $manifest.Package.Identity.Name = "Screenbox.MpvPreview"
-          $manifest.Package.Identity.Version = "0.1.0.6"
-          $manifest.Package.Properties.DisplayName = "Screenbox mpv Preview"
-          $manifest.Package.Applications.Application.VisualElements.DisplayName = "Screenbox mpv Preview"
-          $manifest.Save((Join-Path $PWD "Screenbox/Package.appxmanifest"))
-          & $buildTool Screenbox/Screenbox.csproj -restore -m -v:minimal -p:Configuration=Release -p:Platform=x64 -p:RestoreConfigFile=nuget.config -p:ContinuousIntegrationBuild=true -p:AppxBundle=Never -p:AppxBundlePlatforms=x64 -p:AppxPackageSigningEnabled=false -p:UapAppxPackageBuildMode=SideloadOnly
-          if ($LASTEXITCODE -ne 0) { throw "Symbol reproduction build failed." }
-      - name: Resolve code offsets without uploading binaries or symbols
-        run: |
-          Add-Type -Path $env:RUNNER_TEMP/Resolve-StartupSymbols.cs
-          $images = Get-ChildItem Screenbox/bin -Recurse -File -Filter Screenbox.exe | Sort-Object Length -Descending
-          $image = $images | Select-Object -First 1
-          $symbols = Get-ChildItem Screenbox -Recurse -File -Filter Screenbox.pdb
-          Get-FileHash -LiteralPath $image.FullName -Algorithm SHA256 | Format-List
-          $search = ($symbols.DirectoryName | Select-Object -Unique) -join ';'
-          [StartupSymbolResolver]::Resolve($image.FullName, $search, [ulong[]]@(0x19f2a3,0x18a11cc,0x19f293,0x15fd6b0,0x245c56,0x8ea1fc,0xa17e0d,0x9f7ab0,0x1600d60,0xab191f,0xa0e2cf,0xa10d21))
