@@ -10,7 +10,7 @@ using Windows.Foundation.Collections;
 namespace Screenbox.MpvBridge;
 
 /// <summary>Runs mpv in a child window and forwards playback state to the packaged Screenbox UI.</summary>
-internal sealed class Program : IDisposable
+internal sealed partial class Program : IDisposable
 {
     private readonly AppServiceConnection _connection = new()
     {

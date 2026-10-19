@@ -108,6 +108,8 @@ public sealed partial class MpvVideoView : FrameworkElement
         catch (Exception) { }
     }
 
+    [DynamicWindowsRuntimeCast(typeof(UIElement))]
+    [DynamicWindowsRuntimeCast(typeof(FrameworkElement))]
     private async Task UpdateBoundsAsync()
     {
         if (_updating || Window.Current?.Content is not UIElement root) return;
@@ -140,7 +142,7 @@ public sealed partial class MpvVideoView : FrameworkElement
                 try
                 {
                     Point point = child.TransformToVisual(root).TransformPoint(new Point());
-                    holes.Add(new JsonObject
+                    holes.Add((JsonNode)new JsonObject
                     {
                         ["x"] = (int)Math.Floor(point.X * scale) - x - 6,
                         ["y"] = (int)Math.Floor(point.Y * scale) - y - 6,

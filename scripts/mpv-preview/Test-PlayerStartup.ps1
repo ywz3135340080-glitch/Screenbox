@@ -1,4 +1,4 @@
-param([string]$PackageName = 'Screenbox.MpvPreview')
+param([string]$PackageName = 'Screenbox.MpvPreview', [switch]$RequireReadyLog)
 $ErrorActionPreference = 'Stop'
 $started = Get-Date
 $package = Get-AppxPackage -Name $PackageName | Select-Object -First 1
@@ -34,6 +34,14 @@ try {
     "Activated $appId as PID $playerProcessId"
     $process = Get-Process -Id $playerProcessId
     if ($process.WaitForExit(15000)) { throw "The app exited during startup: $($process.ExitCode)." }
+    if ($RequireReadyLog) {
+        $readyPath = Join-Path $env:LOCALAPPDATA ("Packages/" + $package.PackageFamilyName + "/LocalState/startup.log")
+        if (-not (Test-Path -LiteralPath $readyPath) -or
+            (Get-Item -LiteralPath $readyPath).LastWriteTime -lt $started -or
+            -not ((Get-Content -LiteralPath $readyPath -Raw) -match 'Main window activated')) {
+            throw 'The UI did not confirm that the main window was activated.'
+        }
+    }
     'PASS: the installed player stayed running for 15 seconds.'
 } finally {
     $diagnostics = Join-Path $PWD 'artifacts/startup-check'

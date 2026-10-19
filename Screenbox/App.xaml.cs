@@ -83,6 +83,7 @@ sealed partial class App : Application
     }
 
     /// <summary>Accepts only the renderer service belonging to this installed Screenbox package.</summary>
+    [DynamicWindowsRuntimeCast(typeof(AppServiceTriggerDetails))]
     protected override void OnBackgroundActivated(BackgroundActivatedEventArgs args)
     {
         if (args.TaskInstance.TriggerDetails is AppServiceTriggerDetails details &&

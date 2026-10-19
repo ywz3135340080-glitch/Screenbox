@@ -76,7 +76,7 @@ jobs:
           $env:SCREENBOX_KIT_DIR = (Resolve-Path artifacts/startup-payload).Path
           & powershell.exe -NoLogo -NoProfile -NonInteractive -File scripts/mpv-preview/InstallEngine.ps1
           if ($LASTEXITCODE -ne 0) { throw "Player deployment failed." }
-          ./scripts/mpv-preview/Test-PlayerStartup.ps1
+          ./scripts/mpv-preview/Test-PlayerStartup.ps1 -RequireReadyLog
 
       - name: Verify runtime reuse and missing-dependency selection
         run: ./scripts/mpv-preview/Test-SetupEngine.ps1 -Payload artifacts/ScreenboxMpvPreview-x64.zip
