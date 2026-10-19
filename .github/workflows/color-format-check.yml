@@ -1,0 +1,26 @@
+name: Screenbox XAML formatting
+on:
+  push:
+    branches: [codex/dolby-vision]
+    paths:
+      - Screenbox/Controls/PlayerElement.xaml
+      - .github/workflows/color-format-check.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  formatting:
+    runs-on: windows-2025-vs2026
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - name: Restore the repository tools
+        run: |
+          dotnet tool restore
+          if ($LASTEXITCODE -ne 0) { throw "Tool restore failed" }
+      - name: Verify XAML formatting
+        run: |
+          ./scripts/lint-xaml.ps1
+          if ($LASTEXITCODE -ne 0) { throw "XAML formatting differs from the repository rules" }
