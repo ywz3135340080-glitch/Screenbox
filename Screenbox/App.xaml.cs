@@ -45,13 +45,16 @@ sealed partial class App : Application
     /// </summary>
     public App()
     {
+        StartupDiagnostics.Write("App constructor entered");
         // Initialize Sentry SDK and immediately register error handlers before XAML is initialized
         _ = InitializeSentrySdk();
         UnhandledException += App_UnhandledException;
         CoreApplication.UnhandledErrorDetected += CoreApplication_UnhandledErrorDetected;
         GlobalizationHelper.SyncCurrentCultureWithAppLanguage();
 
+        StartupDiagnostics.Write("Loading application resources");
         InitializeComponent();
+        StartupDiagnostics.Write("Application resources loaded");
 
         if (DeviceInfoHelper.IsXbox)
         {
@@ -68,6 +71,7 @@ sealed partial class App : Application
         // https://learn.microsoft.com/en-us/windows/apps/design/accessibility/high-contrast-themes#setting-highcontrastadjustment-to-none
         HighContrastAdjustment = ApplicationHighContrastAdjustment.None;
 
+        StartupDiagnostics.Write("Configuring services");
         _services = ConfigureServices();
         CommunityToolkit.Mvvm.DependencyInjection.Ioc.Default.ConfigureServices(_services);
 
@@ -75,6 +79,7 @@ sealed partial class App : Application
         _telemetryService = _services.GetRequiredService<ITelemetryService>();
 
         Suspending += OnSuspending;
+        StartupDiagnostics.Write("App constructor completed");
     }
 
     /// <summary>Accepts only the renderer service belonging to this installed Screenbox package.</summary>
@@ -99,6 +104,7 @@ sealed partial class App : Application
         }
         catch (Exception ex)
         {
+            StartupDiagnostics.Write("CoreApplication.UnhandledErrorDetected", ex);
             // Tell Sentry this was an unhandled exception
             ex.Data[Mechanism.HandledKey] = false;
             ex.Data[Mechanism.MechanismKey] = "CoreApplication.UnhandledErrorDetected";
@@ -125,6 +131,7 @@ sealed partial class App : Application
     {
         // Get a reference to the exception, because the Exception property is cleared when accessed.
         var exception = e.Exception;
+        StartupDiagnostics.Write("Application.UnhandledException: " + e.Message, exception);
         if (exception != null)
         {
             // Tell Sentry this was an unhandled exception
@@ -237,11 +244,14 @@ sealed partial class App : Application
     /// <param name="e">Details about the launch request and process.</param>
     protected override void OnLaunched(LaunchActivatedEventArgs e)
     {
+        StartupDiagnostics.Write("OnLaunched entered");
         _logger.LogInformation("App launched. {PrelaunchActivated} {PreviousExecutionState}",
             e.PrelaunchActivated, e.PreviousExecutionState);
 
         Frame rootFrame = InitRootFrame();
+        StartupDiagnostics.Write("Root frame ready; initializing media library");
         LibVLCSharp.Shared.Core.Initialize();
+        StartupDiagnostics.Write("Media library initialized");
         _ = StartupInitAsync();
 
         if (e.PrelaunchActivated) return;
@@ -249,11 +259,14 @@ sealed partial class App : Application
         if (rootFrame.Content == null)
         {
             SetMinWindowSize();
+            StartupDiagnostics.Write("Navigating to MainPage");
             rootFrame.Navigate(typeof(MainPage));
+            StartupDiagnostics.Write("MainPage navigation completed");
         }
 
         // Ensure the current window is active
         Window.Current.Activate();
+        StartupDiagnostics.Write("Main window activated");
 
 #if DEBUG
         if (System.Diagnostics.Debugger.IsAttached)
@@ -275,7 +288,8 @@ sealed partial class App : Application
     /// <param name="e">Details about the navigation failure</param>
     void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
     {
-        throw new Exception("Failed to load Page " + e.SourcePageType.FullName);
+        StartupDiagnostics.Write("Navigation failed: " + e.SourcePageType.FullName, e.Exception);
+        throw new Exception("Failed to load Page " + e.SourcePageType.FullName, e.Exception);
     }
 
     /// <summary>

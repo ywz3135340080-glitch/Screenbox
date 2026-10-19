@@ -70,6 +70,14 @@ jobs:
       - name: Create preview installation kit
         run: ./scripts/Export-MpvPreviewKit.ps1
 
+      - name: Install and launch the actual packaged player
+        run: |
+          Expand-Archive -LiteralPath artifacts/ScreenboxMpvPreview-x64.zip -DestinationPath artifacts/startup-payload
+          $env:SCREENBOX_KIT_DIR = (Resolve-Path artifacts/startup-payload).Path
+          & powershell.exe -NoLogo -NoProfile -NonInteractive -File scripts/mpv-preview/InstallEngine.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Player deployment failed." }
+          ./scripts/mpv-preview/Test-PlayerStartup.ps1
+
       - name: Verify runtime reuse and missing-dependency selection
         run: ./scripts/mpv-preview/Test-SetupEngine.ps1 -Payload artifacts/ScreenboxMpvPreview-x64.zip
 
@@ -109,5 +117,7 @@ jobs:
             screenbox-build.binlog
             artifacts/setup-preview.png
             setup-selftest.txt
+            artifacts/startup-check/**
+            Screenbox/bin/**/Screenbox.pdb
           if-no-files-found: ignore
           retention-days: 7

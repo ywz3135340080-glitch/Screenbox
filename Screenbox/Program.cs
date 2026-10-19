@@ -1,3 +1,5 @@
+using System;
+using Screenbox.Helpers;
 using Windows.UI.Xaml;
 
 namespace Screenbox;
@@ -8,11 +10,22 @@ public static class Program
     /// <summary>Initializes the UWP dispatcher and application.</summary>
     public static void Main(string[] args)
     {
+        StartupDiagnostics.Write("Program entered");
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+            StartupDiagnostics.Write("AppDomain.UnhandledException", args.ExceptionObject as Exception);
         Application.Start(_ =>
         {
             var context = new Windows.System.DispatcherQueueSynchronizationContext(Windows.System.DispatcherQueue.GetForCurrentThread());
             System.Threading.SynchronizationContext.SetSynchronizationContext(context);
-            new App();
+            try
+            {
+                new App();
+            }
+            catch (Exception exception)
+            {
+                StartupDiagnostics.Write("App construction failed", exception);
+                throw;
+            }
         });
     }
 }
